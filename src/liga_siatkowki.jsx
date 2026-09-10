@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { Trophy, CalendarDays, Lock, Plus, Trash2, ShieldCheck, X, Check, KeyRound, Wand2, AlertTriangle, Copy, Printer, ChevronDown, ChevronRight } from "lucide-react";
-import { storage, adminAuth } from "./lib/storage";
 
 const FONT_STYLE = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
@@ -58,29 +57,6 @@ const FONT_STYLE = `
   border: 1px solid #16303D; padding: 6px 8px; font-size: 13px; text-align: center;
 }
 .vb-sig-line { border-bottom: 1px solid #16303D; height: 42px; }
-* { box-sizing: border-box; }
-.vb-header { background: var(--navy); padding: clamp(14px, 4vw, 22px) clamp(14px, 4vw, 24px) 0 clamp(14px, 4vw, 24px); position: sticky; top: 0; z-index: 20; }
-.vb-header-top { display: flex; align-items: center; gap: 10px; margin-bottom: clamp(10px, 3vw, 16px); flex-wrap: wrap; }
-.vb-logo { width: clamp(30px, 8vw, 44px); height: clamp(30px, 8vw, 44px); flex-shrink: 0; }
-.vb-title { color: var(--amber); font-size: clamp(22px, 6.5vw, 34px); line-height: 1; }
-.vb-tabs { display: flex; gap: clamp(10px, 4vw, 24px); overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.vb-tab-btn { background: none; display: flex; align-items: center; gap: 6px; padding: 8px 2px 10px 2px; font-size: clamp(12px, 3.2vw, 14px); font-weight: 600; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; white-space: nowrap; }
-.vb-content { padding: clamp(12px, 4vw, 24px); }
-.vb-match-card {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; background: #FFFFFF; border: 1px solid #DFD8C8;
-  border-radius: 4px; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;
-}
-.vb-match-info { display: flex; align-items: center; gap: 14px; flex: 1 1 260px; flex-wrap: wrap; min-width: 0; }
-.vb-match-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.vb-standings-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.vb-standings-table { width: 100%; min-width: 480px; border-collapse: collapse; }
-@media (max-width: 480px) {
-  .vb-match-info { gap: 8px; }
-  .vb-match-info > span:first-child { min-width: 0 !important; flex-basis: 100%; }
-  .vb-sig-row { flex-direction: column !important; }
-  .vb-protocol-sheet, .vb-poster-sheet { padding: 20px 16px !important; }
-}
 @media print {
   #vb-app-content, .vb-no-print { display: none !important; }
   .vb-protocol-overlay, .vb-poster-overlay {
@@ -98,6 +74,7 @@ const LEGACY_TEAMS_KEY = "vb-teams";
 const LEGACY_MATCHES_KEY = "vb-matches";
 const SEASONS_KEY = "vb-seasons";
 const CURRENT_SEASON_KEY = "vb-current-season";
+const PASS_KEY = "vb-admin-password";
 
 const teamsKey = (seasonId) => `vb-teams-${seasonId}`;
 const matchesKey = (seasonId) => `vb-matches-${seasonId}`;
@@ -318,13 +295,13 @@ export default function VolleyballLeagueApp() {
       try {
         let seasonList = [];
         try {
-          const r = await storage.get(SEASONS_KEY);
+          const r = await window.storage.get(SEASONS_KEY, true);
           if (r) seasonList = JSON.parse(r.value);
         } catch (e) { /* brak sezonów jeszcze */ }
 
         let curId = null;
         try {
-          const r = await storage.get(CURRENT_SEASON_KEY);
+          const r = await window.storage.get(CURRENT_SEASON_KEY, true);
           if (r) curId = r.value;
         } catch (e) { /* brak ustawionego domyślnego sezonu */ }
 
@@ -332,25 +309,25 @@ export default function VolleyballLeagueApp() {
           // migracja starych, niesezonowych danych (jeśli istniały) do pierwszego sezonu
           let legacyTeams = null, legacyMatches = null;
           try {
-            const r = await storage.get(LEGACY_TEAMS_KEY);
+            const r = await window.storage.get(LEGACY_TEAMS_KEY, true);
             if (r) legacyTeams = JSON.parse(r.value);
           } catch (e) { /* brak */ }
           try {
-            const r = await storage.get(LEGACY_MATCHES_KEY);
+            const r = await window.storage.get(LEGACY_MATCHES_KEY, true);
             if (r) legacyMatches = JSON.parse(r.value);
           } catch (e) { /* brak */ }
 
           const firstId = uid();
-          await storage.set(teamsKey(firstId), JSON.stringify(legacyTeams || []));
-          await storage.set(matchesKey(firstId), JSON.stringify(legacyMatches || []));
-          await storage.set(venuesKey(firstId), JSON.stringify([{ id: uid(), name: "Hala 1" }]));
+          await window.storage.set(teamsKey(firstId), JSON.stringify(legacyTeams || []), true);
+          await window.storage.set(matchesKey(firstId), JSON.stringify(legacyMatches || []), true);
+          await window.storage.set(venuesKey(firstId), JSON.stringify([{ id: uid(), name: "Hala 1" }]), true);
           seasonList = [{ id: firstId, name: "Sezon 1", createdAt: Date.now() }];
           curId = firstId;
-          await storage.set(SEASONS_KEY, JSON.stringify(seasonList));
-          await storage.set(CURRENT_SEASON_KEY, curId);
+          await window.storage.set(SEASONS_KEY, JSON.stringify(seasonList), true);
+          await window.storage.set(CURRENT_SEASON_KEY, curId, true);
         } else if (!curId || !seasonList.find((s) => s.id === curId)) {
           curId = seasonList[0].id;
-          await storage.set(CURRENT_SEASON_KEY, curId);
+          await window.storage.set(CURRENT_SEASON_KEY, curId, true);
         }
 
         setSeasons(seasonList);
@@ -359,16 +336,16 @@ export default function VolleyballLeagueApp() {
 
         let t = [], m = [];
         try {
-          const r = await storage.get(teamsKey(curId));
+          const r = await window.storage.get(teamsKey(curId), true);
           if (r) t = JSON.parse(r.value);
         } catch (e) { /* brak drużyn */ }
         try {
-          const r = await storage.get(matchesKey(curId));
+          const r = await window.storage.get(matchesKey(curId), true);
           if (r) m = JSON.parse(r.value);
         } catch (e) { /* brak meczów */ }
         let v = [];
         try {
-          const r = await storage.get(venuesKey(curId));
+          const r = await window.storage.get(venuesKey(curId), true);
           if (r) v = JSON.parse(r.value);
         } catch (e) { /* brak hal */ }
         setTeams(t);
@@ -376,8 +353,8 @@ export default function VolleyballLeagueApp() {
         setVenues(v);
 
         try {
-          const exists = await adminAuth.passwordExists();
-          setAdminPasswordExists(exists);
+          await window.storage.get(PASS_KEY, true);
+          setAdminPasswordExists(true);
         } catch (e) {
           setAdminPasswordExists(false);
         }
@@ -393,15 +370,15 @@ export default function VolleyballLeagueApp() {
     setSelectedSeasonId(id);
     let t = [], m = [], v = [];
     try {
-      const r = await storage.get(teamsKey(id));
+      const r = await window.storage.get(teamsKey(id), true);
       if (r) t = JSON.parse(r.value);
     } catch (e) { /* brak drużyn */ }
     try {
-      const r = await storage.get(matchesKey(id));
+      const r = await window.storage.get(matchesKey(id), true);
       if (r) m = JSON.parse(r.value);
     } catch (e) { /* brak meczów */ }
     try {
-      const r = await storage.get(venuesKey(id));
+      const r = await window.storage.get(venuesKey(id), true);
       if (r) v = JSON.parse(r.value);
     } catch (e) { /* brak hal */ }
     setTeams(t);
@@ -420,19 +397,19 @@ export default function VolleyballLeagueApp() {
       let newVenues = [{ id: uid(), name: "Hala 1" }];
       if (copySeasonSource) {
         try {
-          const r = await storage.get(teamsKey(copySeasonSource));
+          const r = await window.storage.get(teamsKey(copySeasonSource), true);
           if (r) newTeams = JSON.parse(r.value).map((t) => ({ id: uid(), name: t.name }));
         } catch (e) { /* brak drużyn do skopiowania */ }
         try {
-          const r = await storage.get(venuesKey(copySeasonSource));
+          const r = await window.storage.get(venuesKey(copySeasonSource), true);
           if (r) newVenues = JSON.parse(r.value).map((v) => ({ id: uid(), name: v.name }));
         } catch (e) { /* brak hal do skopiowania */ }
       }
-      await storage.set(teamsKey(id), JSON.stringify(newTeams));
-      await storage.set(matchesKey(id), JSON.stringify([]));
-      await storage.set(venuesKey(id), JSON.stringify(newVenues));
+      await window.storage.set(teamsKey(id), JSON.stringify(newTeams), true);
+      await window.storage.set(matchesKey(id), JSON.stringify([]), true);
+      await window.storage.set(venuesKey(id), JSON.stringify(newVenues), true);
       const nextSeasons = [...seasons, { id, name, createdAt: Date.now() }];
-      await storage.set(SEASONS_KEY, JSON.stringify(nextSeasons));
+      await window.storage.set(SEASONS_KEY, JSON.stringify(nextSeasons), true);
       setSeasons(nextSeasons);
       setNewSeasonName("");
       setCopySeasonSource("");
@@ -444,7 +421,7 @@ export default function VolleyballLeagueApp() {
 
   async function setAsCurrentSeason(id) {
     setCurrentSeasonId(id);
-    try { await storage.set(CURRENT_SEASON_KEY, id); } catch (e) { setStorageError(true); }
+    try { await window.storage.set(CURRENT_SEASON_KEY, id, true); } catch (e) { setStorageError(true); }
   }
 
   async function deleteSeason(id) {
@@ -452,10 +429,10 @@ export default function VolleyballLeagueApp() {
     const nextSeasons = seasons.filter((s) => s.id !== id);
     setSeasons(nextSeasons);
     setConfirmDeleteSeasonId(null);
-    try { await storage.set(SEASONS_KEY, JSON.stringify(nextSeasons)); } catch (e) { /* ignore */ }
-    try { await storage.delete(teamsKey(id)); } catch (e) { /* ignore */ }
-    try { await storage.delete(matchesKey(id)); } catch (e) { /* ignore */ }
-    try { await storage.delete(venuesKey(id)); } catch (e) { /* ignore */ }
+    try { await window.storage.set(SEASONS_KEY, JSON.stringify(nextSeasons), true); } catch (e) { /* ignore */ }
+    try { await window.storage.delete(teamsKey(id), true); } catch (e) { /* ignore */ }
+    try { await window.storage.delete(matchesKey(id), true); } catch (e) { /* ignore */ }
+    try { await window.storage.delete(venuesKey(id), true); } catch (e) { /* ignore */ }
     if (id === currentSeasonId) await setAsCurrentSeason(nextSeasons[0].id);
     if (id === selectedSeasonId) await switchSeason(nextSeasons[0].id);
   }
@@ -463,19 +440,19 @@ export default function VolleyballLeagueApp() {
   const saveTeams = useCallback(async (next) => {
     setTeams(next);
     if (!selectedSeasonId) return;
-    try { await storage.set(teamsKey(selectedSeasonId), JSON.stringify(next)); } catch (e) { setStorageError(true); }
+    try { await window.storage.set(teamsKey(selectedSeasonId), JSON.stringify(next), true); } catch (e) { setStorageError(true); }
   }, [selectedSeasonId]);
 
   const saveMatches = useCallback(async (next) => {
     setMatches(next);
     if (!selectedSeasonId) return;
-    try { await storage.set(matchesKey(selectedSeasonId), JSON.stringify(next)); } catch (e) { setStorageError(true); }
+    try { await window.storage.set(matchesKey(selectedSeasonId), JSON.stringify(next), true); } catch (e) { setStorageError(true); }
   }, [selectedSeasonId]);
 
   const saveVenues = useCallback(async (next) => {
     setVenues(next);
     if (!selectedSeasonId) return;
-    try { await storage.set(venuesKey(selectedSeasonId), JSON.stringify(next)); } catch (e) { setStorageError(true); }
+    try { await window.storage.set(venuesKey(selectedSeasonId), JSON.stringify(next), true); } catch (e) { setStorageError(true); }
   }, [selectedSeasonId]);
 
   function addTeam() {
@@ -612,7 +589,7 @@ export default function VolleyballLeagueApp() {
     if (passInput.length < 4) { setPassError("Hasło musi mieć min. 4 znaki."); return; }
     if (passInput !== passInput2) { setPassError("Hasła nie są identyczne."); return; }
     try {
-      await adminAuth.setPassword(passInput);
+      await window.storage.set(PASS_KEY, passInput, true);
       setAdminPasswordExists(true);
       setUnlocked(true);
       setPassInput(""); setPassInput2("");
@@ -624,8 +601,8 @@ export default function VolleyballLeagueApp() {
   async function handleLogin() {
     setPassError("");
     try {
-      const ok = await adminAuth.verifyPassword(passInput);
-      if (ok) {
+      const r = await window.storage.get(PASS_KEY, true);
+      if (r && r.value === passInput) {
         setUnlocked(true);
         setPassInput("");
       } else {
@@ -660,10 +637,10 @@ export default function VolleyballLeagueApp() {
 
       <div id="vb-app-content">
       {/* Header */}
-      <div className="vb-header">
-        <div className="vb-header-top">
-          <img src={LOGO_DATA_URI} alt="Towarzystwo Sportowe w Wągrowcu" className="vb-logo" />
-          <span className="vb-display vb-title">LIGA SIATKÓWKI</span>
+      <div style={{ background: "var(--navy)", padding: "22px 24px 0 24px", position: "sticky", top: 0, zIndex: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <img src={LOGO_DATA_URI} alt="Towarzystwo Sportowe w Wągrowcu" style={{ width: 44, height: 44, flexShrink: 0 }} />
+          <span className="vb-display" style={{ color: "var(--amber)", fontSize: 34, lineHeight: 1 }}>LIGA SIATKÓWKI</span>
           {seasons.length > 0 ? (
             <select
               value={selectedSeasonId || ""}
@@ -671,7 +648,6 @@ export default function VolleyballLeagueApp() {
               style={{
                 background: "var(--navy-2)", color: "var(--chalk)", border: "1px solid #2C4C5E", borderRadius: 4,
                 padding: "4px 8px", fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif", cursor: "pointer",
-                maxWidth: "100%",
               }}
             >
               {seasons.map((s) => (
@@ -687,7 +663,7 @@ export default function VolleyballLeagueApp() {
             </span>
           )}
         </div>
-        <div className="vb-tabs">
+        <div style={{ display: "flex", gap: 24 }}>
           {[
             { id: "tabela", label: "Tabela", icon: Trophy },
             { id: "terminarz", label: "Terminarz", icon: CalendarDays },
@@ -696,8 +672,19 @@ export default function VolleyballLeagueApp() {
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`vb-tab vb-tab-btn ${tab === id ? "active" : ""}`}
-              style={{ color: tab === id ? "var(--amber)" : "var(--chalk)" }}
+              className={`vb-tab ${tab === id ? "active" : ""}`}
+              style={{
+                background: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 2px 10px 2px",
+                color: tab === id ? "var(--amber)" : "var(--chalk)",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "'IBM Plex Sans', sans-serif",
+              }}
             >
               <Icon size={15} />
               {label}
@@ -706,7 +693,7 @@ export default function VolleyballLeagueApp() {
         </div>
       </div>
 
-      <div className="vb-content">
+      <div style={{ padding: 24 }}>
         {storageError && (
           <div style={{ background: "#F6E4DE", color: "var(--rust)", padding: "10px 14px", borderRadius: 4, marginBottom: 16, fontSize: 13 }}>
             Wystąpił problem z zapisem danych. Spróbuj odświeżyć stronę.
@@ -718,8 +705,8 @@ export default function VolleyballLeagueApp() {
             {standings.length === 0 ? (
               <EmptyState text="Brak drużyn. Dodaj drużyny w panelu Admin, żeby zobaczyć tabelę." />
             ) : (
-              <div className="vb-standings-wrap">
-                <table className="vb-standings-table">
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "2px solid var(--navy)" }}>
                       {["#", "Drużyna", "M", "W", "P", "Sety", "Punkty", "Pkt lig."].map((h, i) => (
@@ -783,8 +770,12 @@ export default function VolleyballLeagueApp() {
                     .map((m) => {
                     const o = matchOutcome(m);
                     return (
-                      <div key={m.id} className="vb-match-card">
-                        <div className="vb-match-info">
+                      <div key={m.id} style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "10px 14px", background: "#FFFFFF", border: "1px solid #DFD8C8",
+                        borderRadius: 4, marginBottom: 6, flexWrap: "wrap", gap: 6,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 12, color: "var(--grey)", minWidth: 150 }}>
                             {m.date ? formatDate(m.date) : ""}{m.time ? ` · ${m.time}` : ""}{m.venue ? ` · ${m.venue}` : ""}
                           </span>
@@ -792,7 +783,7 @@ export default function VolleyballLeagueApp() {
                           <span style={{ color: "var(--grey)" }}>vs</span>
                           <span style={{ fontWeight: o.winner === "away" ? 700 : 400 }}>{teamName(m.awayId)}</span>
                         </div>
-                        <div className="vb-match-actions">
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           {o.played ? (
                             <span className="vb-display" style={{ fontSize: 20, color: "var(--navy)" }}>
                               {o.homeSets} : {o.awaySets}
@@ -1156,7 +1147,7 @@ export default function VolleyballLeagueApp() {
                         display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
                         background: "#fff", border: hasConflict ? "1px solid var(--rust)" : "1px solid #DFD8C8", borderRadius: 4, padding: "10px 14px", marginBottom: 8,
                       }}>
-                        <div style={{ minWidth: "min(260px, 100%)", flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ minWidth: 260, display: "flex", flexDirection: "column", gap: 6 }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                             <span style={{ fontSize: 11, color: "var(--grey)" }}>Kolejka</span>
                             <input className="vb-input" style={{ width: 46, padding: "3px 6px" }} value={m.round}
@@ -1485,7 +1476,7 @@ function MatchProtocol({ match, teams, seasonName, onClose }) {
           <div className="vb-sig-line"></div>
         </div>
 
-        <div className="vb-sig-row" style={{ display: "flex", gap: 20, marginTop: 30 }}>
+        <div style={{ display: "flex", gap: 20, marginTop: 30 }}>
           {["Sędzia", `Kapitan — ${teamName(match.homeId)}`, `Kapitan — ${teamName(match.awayId)}`].map((label) => (
             <div key={label} style={{ flex: 1, textAlign: "center" }}>
               <div className="vb-sig-line"></div>
