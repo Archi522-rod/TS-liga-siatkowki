@@ -1,0 +1,19 @@
+{
+  "name": "Liga Siatkówki — TS Wągrowiec",
+  "short_name": "Liga Siatkówki",
+  "description": "Tabela, terminarz i wyniki Ligi Siatkówki Towarzystwa Sportowego w Wągrowcu.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#16303D",
+  "theme_color": "#16303D",
+  "lang": "pl",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
