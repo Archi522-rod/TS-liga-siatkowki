@@ -1,62 +1,133 @@
 import { useState, useEffect, useCallback } from "react";
 import { Trophy, CalendarDays, Lock, Plus, Trash2, ShieldCheck, X, Check, KeyRound, Wand2, AlertTriangle, Copy, Printer, ChevronDown, ChevronRight } from "lucide-react";
+import { storage, adminAuth } from "./lib/storage";
 
 const FONT_STYLE = `
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 :root {
   --navy: #16303D;
   --navy-2: #1E3E4E;
+  --navy-3: #0F232D;
   --oak: #C99A5B;
+  --oak-dark: #B0824A;
   --chalk: #F2EFE9;
+  --chalk-2: #EAE4D6;
   --amber: #F0A93B;
   --grey: #7C8B90;
   --rust: #B4573F;
+  --line: #E2DBC9;
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow-sm: 0 1px 2px rgba(22, 48, 61, 0.06);
+  --shadow-md: 0 4px 16px rgba(22, 48, 61, 0.10);
+  --shadow-lg: 0 12px 32px rgba(22, 48, 61, 0.18);
 }
+* { box-sizing: border-box; }
 .vb-root { font-family: 'IBM Plex Sans', sans-serif; color: var(--navy); }
 .vb-display { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.02em; }
-.vb-tab { border-bottom: 3px solid transparent; transition: border-color 0.15s ease, color 0.15s ease; }
-.vb-tab.active { border-color: var(--amber); color: var(--amber); }
+
+/* Scrollbars */
+.vb-root ::-webkit-scrollbar { height: 8px; width: 8px; }
+.vb-root ::-webkit-scrollbar-track { background: transparent; }
+.vb-root ::-webkit-scrollbar-thumb { background: #C9C2B3; border-radius: 8px; }
+
+.vb-tab { border-bottom: 3px solid transparent; transition: border-color 0.18s ease, color 0.18s ease, opacity 0.18s ease; opacity: 0.72; }
+.vb-tab.active { border-color: var(--amber); color: var(--amber); opacity: 1; }
+.vb-tab:hover:not(.active) { opacity: 1; }
+
 .vb-input {
-  background: var(--chalk);
-  border: 1px solid #C9C2B3;
-  border-radius: 4px;
-  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #D8D1BF;
+  border-radius: var(--radius-sm);
+  padding: 7px 11px;
   font-family: 'IBM Plex Sans', sans-serif;
   font-size: 14px;
   color: var(--navy);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.vb-input:focus { outline: none; border-color: var(--oak); }
+.vb-input:focus { outline: none; border-color: var(--oak); box-shadow: 0 0 0 3px rgba(201, 154, 91, 0.18); }
+.vb-input:hover { border-color: #C9C2B3; }
+
 .vb-btn {
   font-family: 'IBM Plex Sans', sans-serif;
   font-weight: 600;
-  border-radius: 4px;
-  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  padding: 9px 18px;
   cursor: pointer;
-  transition: filter 0.15s ease, transform 0.1s ease;
+  transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   border: none;
+  box-shadow: var(--shadow-sm);
 }
-.vb-btn:hover { filter: brightness(1.08); }
-.vb-btn:active { transform: translateY(1px); }
+.vb-btn:hover { filter: brightness(1.07); box-shadow: var(--shadow-md); }
+.vb-btn:active { transform: translateY(1px); box-shadow: var(--shadow-sm); }
+
 .vb-score-input {
-  width: 34px;
+  width: 36px;
   text-align: center;
   background: var(--navy);
   color: var(--amber);
   border: 1px solid var(--navy-2);
-  border-radius: 3px;
+  border-radius: 6px;
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 16px;
-  padding: 3px 0;
+  font-size: 17px;
+  padding: 4px 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.vb-score-input:focus { outline: none; border-color: var(--amber); }
+.vb-score-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(240, 169, 59, 0.25); }
 .vb-score-input::-webkit-outer-spin-button, .vb-score-input::-webkit-inner-spin-button {
   -webkit-appearance: none; margin: 0;
 }
+
 .vb-protocol-table { width: 100%; border-collapse: collapse; }
 .vb-protocol-table th, .vb-protocol-table td {
   border: 1px solid #16303D; padding: 6px 8px; font-size: 13px; text-align: center;
 }
 .vb-sig-line { border-bottom: 1px solid #16303D; height: 42px; }
+
+.vb-header {
+  background: linear-gradient(165deg, var(--navy) 0%, var(--navy-3) 100%);
+  padding: clamp(14px, 4vw, 22px) clamp(14px, 4vw, 24px) 0 clamp(14px, 4vw, 24px);
+  position: sticky; top: 0; z-index: 20;
+  box-shadow: 0 6px 20px rgba(10, 22, 28, 0.25);
+}
+.vb-header-top { display: flex; align-items: center; gap: 12px; margin-bottom: clamp(10px, 3vw, 16px); flex-wrap: wrap; }
+.vb-logo {
+  width: clamp(32px, 8vw, 46px); height: clamp(32px, 8vw, 46px); flex-shrink: 0;
+  border-radius: 50%; box-shadow: 0 0 0 2px rgba(240, 169, 59, 0.35), var(--shadow-sm);
+}
+.vb-title { color: var(--amber); font-size: clamp(22px, 6.5vw, 34px); line-height: 1; }
+.vb-tabs { display: flex; gap: clamp(14px, 4vw, 28px); overflow-x: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid rgba(242, 239, 233, 0.08); }
+.vb-tab-btn { background: none; display: flex; align-items: center; gap: 7px; padding: 10px 2px 11px 2px; font-size: clamp(12px, 3.2vw, 14px); font-weight: 600; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; white-space: nowrap; }
+.vb-content { padding: clamp(14px, 4vw, 26px); max-width: 980px; margin: 0 auto; }
+
+.vb-match-card {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: #FFFFFF; border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: var(--radius-sm); margin-bottom: 8px; flex-wrap: wrap; gap: 8px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.vb-match-card:hover { box-shadow: var(--shadow-md); border-left-color: var(--oak); transform: translateY(-1px); }
+.vb-match-info { display: flex; align-items: center; gap: 14px; flex: 1 1 260px; flex-wrap: wrap; min-width: 0; }
+.vb-match-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.vb-standings-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--line); border-radius: var(--radius); background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.vb-standings-table { width: 100%; min-width: 480px; border-collapse: collapse; }
+.vb-standings-table thead th { background: var(--chalk-2); }
+.vb-standings-table tbody tr { transition: background-color 0.12s ease; }
+.vb-standings-table tbody tr:hover { background-color: #F5F0E4 !important; }
+
+@media (max-width: 480px) {
+  .vb-match-info { gap: 8px; }
+  .vb-match-info > span:first-child { min-width: 0 !important; flex-basis: 100%; }
+  .vb-sig-row { flex-direction: column !important; }
+  .vb-protocol-sheet, .vb-poster-sheet { padding: 20px 16px !important; }
+}
 @media print {
   #vb-app-content, .vb-no-print { display: none !important; }
   .vb-protocol-overlay, .vb-poster-overlay {
@@ -74,7 +145,6 @@ const LEGACY_TEAMS_KEY = "vb-teams";
 const LEGACY_MATCHES_KEY = "vb-matches";
 const SEASONS_KEY = "vb-seasons";
 const CURRENT_SEASON_KEY = "vb-current-season";
-const PASS_KEY = "vb-admin-password";
 
 const teamsKey = (seasonId) => `vb-teams-${seasonId}`;
 const matchesKey = (seasonId) => `vb-matches-${seasonId}`;
@@ -295,13 +365,13 @@ export default function VolleyballLeagueApp() {
       try {
         let seasonList = [];
         try {
-          const r = await window.storage.get(SEASONS_KEY, true);
+          const r = await storage.get(SEASONS_KEY);
           if (r) seasonList = JSON.parse(r.value);
         } catch (e) { /* brak sezonów jeszcze */ }
 
         let curId = null;
         try {
-          const r = await window.storage.get(CURRENT_SEASON_KEY, true);
+          const r = await storage.get(CURRENT_SEASON_KEY);
           if (r) curId = r.value;
         } catch (e) { /* brak ustawionego domyślnego sezonu */ }
 
@@ -309,25 +379,25 @@ export default function VolleyballLeagueApp() {
           // migracja starych, niesezonowych danych (jeśli istniały) do pierwszego sezonu
           let legacyTeams = null, legacyMatches = null;
           try {
-            const r = await window.storage.get(LEGACY_TEAMS_KEY, true);
+            const r = await storage.get(LEGACY_TEAMS_KEY);
             if (r) legacyTeams = JSON.parse(r.value);
           } catch (e) { /* brak */ }
           try {
-            const r = await window.storage.get(LEGACY_MATCHES_KEY, true);
+            const r = await storage.get(LEGACY_MATCHES_KEY);
             if (r) legacyMatches = JSON.parse(r.value);
           } catch (e) { /* brak */ }
 
           const firstId = uid();
-          await window.storage.set(teamsKey(firstId), JSON.stringify(legacyTeams || []), true);
-          await window.storage.set(matchesKey(firstId), JSON.stringify(legacyMatches || []), true);
-          await window.storage.set(venuesKey(firstId), JSON.stringify([{ id: uid(), name: "Hala 1" }]), true);
+          await storage.set(teamsKey(firstId), JSON.stringify(legacyTeams || []));
+          await storage.set(matchesKey(firstId), JSON.stringify(legacyMatches || []));
+          await storage.set(venuesKey(firstId), JSON.stringify([{ id: uid(), name: "Hala 1" }]));
           seasonList = [{ id: firstId, name: "Sezon 1", createdAt: Date.now() }];
           curId = firstId;
-          await window.storage.set(SEASONS_KEY, JSON.stringify(seasonList), true);
-          await window.storage.set(CURRENT_SEASON_KEY, curId, true);
+          await storage.set(SEASONS_KEY, JSON.stringify(seasonList));
+          await storage.set(CURRENT_SEASON_KEY, curId);
         } else if (!curId || !seasonList.find((s) => s.id === curId)) {
           curId = seasonList[0].id;
-          await window.storage.set(CURRENT_SEASON_KEY, curId, true);
+          await storage.set(CURRENT_SEASON_KEY, curId);
         }
 
         setSeasons(seasonList);
@@ -336,16 +406,16 @@ export default function VolleyballLeagueApp() {
 
         let t = [], m = [];
         try {
-          const r = await window.storage.get(teamsKey(curId), true);
+          const r = await storage.get(teamsKey(curId));
           if (r) t = JSON.parse(r.value);
         } catch (e) { /* brak drużyn */ }
         try {
-          const r = await window.storage.get(matchesKey(curId), true);
+          const r = await storage.get(matchesKey(curId));
           if (r) m = JSON.parse(r.value);
         } catch (e) { /* brak meczów */ }
         let v = [];
         try {
-          const r = await window.storage.get(venuesKey(curId), true);
+          const r = await storage.get(venuesKey(curId));
           if (r) v = JSON.parse(r.value);
         } catch (e) { /* brak hal */ }
         setTeams(t);
@@ -353,8 +423,8 @@ export default function VolleyballLeagueApp() {
         setVenues(v);
 
         try {
-          await window.storage.get(PASS_KEY, true);
-          setAdminPasswordExists(true);
+          const exists = await adminAuth.passwordExists();
+          setAdminPasswordExists(exists);
         } catch (e) {
           setAdminPasswordExists(false);
         }
@@ -370,15 +440,15 @@ export default function VolleyballLeagueApp() {
     setSelectedSeasonId(id);
     let t = [], m = [], v = [];
     try {
-      const r = await window.storage.get(teamsKey(id), true);
+      const r = await storage.get(teamsKey(id));
       if (r) t = JSON.parse(r.value);
     } catch (e) { /* brak drużyn */ }
     try {
-      const r = await window.storage.get(matchesKey(id), true);
+      const r = await storage.get(matchesKey(id));
       if (r) m = JSON.parse(r.value);
     } catch (e) { /* brak meczów */ }
     try {
-      const r = await window.storage.get(venuesKey(id), true);
+      const r = await storage.get(venuesKey(id));
       if (r) v = JSON.parse(r.value);
     } catch (e) { /* brak hal */ }
     setTeams(t);
@@ -397,19 +467,19 @@ export default function VolleyballLeagueApp() {
       let newVenues = [{ id: uid(), name: "Hala 1" }];
       if (copySeasonSource) {
         try {
-          const r = await window.storage.get(teamsKey(copySeasonSource), true);
+          const r = await storage.get(teamsKey(copySeasonSource));
           if (r) newTeams = JSON.parse(r.value).map((t) => ({ id: uid(), name: t.name }));
         } catch (e) { /* brak drużyn do skopiowania */ }
         try {
-          const r = await window.storage.get(venuesKey(copySeasonSource), true);
+          const r = await storage.get(venuesKey(copySeasonSource));
           if (r) newVenues = JSON.parse(r.value).map((v) => ({ id: uid(), name: v.name }));
         } catch (e) { /* brak hal do skopiowania */ }
       }
-      await window.storage.set(teamsKey(id), JSON.stringify(newTeams), true);
-      await window.storage.set(matchesKey(id), JSON.stringify([]), true);
-      await window.storage.set(venuesKey(id), JSON.stringify(newVenues), true);
+      await storage.set(teamsKey(id), JSON.stringify(newTeams));
+      await storage.set(matchesKey(id), JSON.stringify([]));
+      await storage.set(venuesKey(id), JSON.stringify(newVenues));
       const nextSeasons = [...seasons, { id, name, createdAt: Date.now() }];
-      await window.storage.set(SEASONS_KEY, JSON.stringify(nextSeasons), true);
+      await storage.set(SEASONS_KEY, JSON.stringify(nextSeasons));
       setSeasons(nextSeasons);
       setNewSeasonName("");
       setCopySeasonSource("");
@@ -421,7 +491,7 @@ export default function VolleyballLeagueApp() {
 
   async function setAsCurrentSeason(id) {
     setCurrentSeasonId(id);
-    try { await window.storage.set(CURRENT_SEASON_KEY, id, true); } catch (e) { setStorageError(true); }
+    try { await storage.set(CURRENT_SEASON_KEY, id); } catch (e) { setStorageError(true); }
   }
 
   async function deleteSeason(id) {
@@ -429,10 +499,10 @@ export default function VolleyballLeagueApp() {
     const nextSeasons = seasons.filter((s) => s.id !== id);
     setSeasons(nextSeasons);
     setConfirmDeleteSeasonId(null);
-    try { await window.storage.set(SEASONS_KEY, JSON.stringify(nextSeasons), true); } catch (e) { /* ignore */ }
-    try { await window.storage.delete(teamsKey(id), true); } catch (e) { /* ignore */ }
-    try { await window.storage.delete(matchesKey(id), true); } catch (e) { /* ignore */ }
-    try { await window.storage.delete(venuesKey(id), true); } catch (e) { /* ignore */ }
+    try { await storage.set(SEASONS_KEY, JSON.stringify(nextSeasons)); } catch (e) { /* ignore */ }
+    try { await storage.delete(teamsKey(id)); } catch (e) { /* ignore */ }
+    try { await storage.delete(matchesKey(id)); } catch (e) { /* ignore */ }
+    try { await storage.delete(venuesKey(id)); } catch (e) { /* ignore */ }
     if (id === currentSeasonId) await setAsCurrentSeason(nextSeasons[0].id);
     if (id === selectedSeasonId) await switchSeason(nextSeasons[0].id);
   }
@@ -440,19 +510,19 @@ export default function VolleyballLeagueApp() {
   const saveTeams = useCallback(async (next) => {
     setTeams(next);
     if (!selectedSeasonId) return;
-    try { await window.storage.set(teamsKey(selectedSeasonId), JSON.stringify(next), true); } catch (e) { setStorageError(true); }
+    try { await storage.set(teamsKey(selectedSeasonId), JSON.stringify(next)); } catch (e) { setStorageError(true); }
   }, [selectedSeasonId]);
 
   const saveMatches = useCallback(async (next) => {
     setMatches(next);
     if (!selectedSeasonId) return;
-    try { await window.storage.set(matchesKey(selectedSeasonId), JSON.stringify(next), true); } catch (e) { setStorageError(true); }
+    try { await storage.set(matchesKey(selectedSeasonId), JSON.stringify(next)); } catch (e) { setStorageError(true); }
   }, [selectedSeasonId]);
 
   const saveVenues = useCallback(async (next) => {
     setVenues(next);
     if (!selectedSeasonId) return;
-    try { await window.storage.set(venuesKey(selectedSeasonId), JSON.stringify(next), true); } catch (e) { setStorageError(true); }
+    try { await storage.set(venuesKey(selectedSeasonId), JSON.stringify(next)); } catch (e) { setStorageError(true); }
   }, [selectedSeasonId]);
 
   function addTeam() {
@@ -589,7 +659,7 @@ export default function VolleyballLeagueApp() {
     if (passInput.length < 4) { setPassError("Hasło musi mieć min. 4 znaki."); return; }
     if (passInput !== passInput2) { setPassError("Hasła nie są identyczne."); return; }
     try {
-      await window.storage.set(PASS_KEY, passInput, true);
+      await adminAuth.setPassword(passInput);
       setAdminPasswordExists(true);
       setUnlocked(true);
       setPassInput(""); setPassInput2("");
@@ -601,8 +671,8 @@ export default function VolleyballLeagueApp() {
   async function handleLogin() {
     setPassError("");
     try {
-      const r = await window.storage.get(PASS_KEY, true);
-      if (r && r.value === passInput) {
+      const ok = await adminAuth.verifyPassword(passInput);
+      if (ok) {
         setUnlocked(true);
         setPassInput("");
       } else {
@@ -637,17 +707,18 @@ export default function VolleyballLeagueApp() {
 
       <div id="vb-app-content">
       {/* Header */}
-      <div style={{ background: "var(--navy)", padding: "22px 24px 0 24px", position: "sticky", top: 0, zIndex: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-          <img src={LOGO_DATA_URI} alt="Towarzystwo Sportowe w Wągrowcu" style={{ width: 44, height: 44, flexShrink: 0 }} />
-          <span className="vb-display" style={{ color: "var(--amber)", fontSize: 34, lineHeight: 1 }}>LIGA SIATKÓWKI</span>
+      <div className="vb-header">
+        <div className="vb-header-top">
+          <img src={LOGO_DATA_URI} alt="Towarzystwo Sportowe w Wągrowcu" className="vb-logo" />
+          <span className="vb-display vb-title">LIGA SIATKÓWKI</span>
           {seasons.length > 0 ? (
             <select
               value={selectedSeasonId || ""}
               onChange={(e) => switchSeason(e.target.value)}
               style={{
-                background: "var(--navy-2)", color: "var(--chalk)", border: "1px solid #2C4C5E", borderRadius: 4,
-                padding: "4px 8px", fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif", cursor: "pointer",
+                background: "var(--navy-2)", color: "var(--chalk)", border: "1px solid #2C4C5E", borderRadius: 8,
+                padding: "5px 10px", fontSize: 13, fontFamily: "'IBM Plex Sans', sans-serif", cursor: "pointer",
+                maxWidth: "100%", marginLeft: "auto",
               }}
             >
               {seasons.map((s) => (
@@ -658,12 +729,12 @@ export default function VolleyballLeagueApp() {
             <span style={{ color: "var(--grey)", fontSize: 13 }}>sezon lokalny</span>
           )}
           {selectedSeasonId && selectedSeasonId !== currentSeasonId && (
-            <span style={{ fontSize: 11, color: "var(--amber)", border: "1px solid var(--amber)", borderRadius: 3, padding: "2px 6px" }}>
+            <span style={{ fontSize: 11, color: "var(--amber)", border: "1px solid var(--amber)", borderRadius: 6, padding: "2px 6px" }}>
               Archiwum
             </span>
           )}
         </div>
-        <div style={{ display: "flex", gap: 24 }}>
+        <div className="vb-tabs">
           {[
             { id: "tabela", label: "Tabela", icon: Trophy },
             { id: "terminarz", label: "Terminarz", icon: CalendarDays },
@@ -672,19 +743,8 @@ export default function VolleyballLeagueApp() {
             <button
               key={id}
               onClick={() => setTab(id)}
-              className={`vb-tab ${tab === id ? "active" : ""}`}
-              style={{
-                background: "none",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 2px 10px 2px",
-                color: tab === id ? "var(--amber)" : "var(--chalk)",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "'IBM Plex Sans', sans-serif",
-              }}
+              className={`vb-tab vb-tab-btn ${tab === id ? "active" : ""}`}
+              style={{ color: tab === id ? "var(--amber)" : "var(--chalk)" }}
             >
               <Icon size={15} />
               {label}
@@ -693,9 +753,9 @@ export default function VolleyballLeagueApp() {
         </div>
       </div>
 
-      <div style={{ padding: 24 }}>
+      <div className="vb-content">
         {storageError && (
-          <div style={{ background: "#F6E4DE", color: "var(--rust)", padding: "10px 14px", borderRadius: 4, marginBottom: 16, fontSize: 13 }}>
+          <div style={{ background: "#F6E4DE", color: "var(--rust)", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
             Wystąpił problem z zapisem danych. Spróbuj odświeżyć stronę.
           </div>
         )}
@@ -703,10 +763,10 @@ export default function VolleyballLeagueApp() {
         {tab === "tabela" && (
           <div>
             {standings.length === 0 ? (
-              <EmptyState text="Brak drużyn. Dodaj drużyny w panelu Admin, żeby zobaczyć tabelę." />
+              <EmptyState icon={Trophy} text="Brak drużyn. Dodaj drużyny w panelu Admin, żeby zobaczyć tabelę." />
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <div className="vb-standings-wrap">
+                <table className="vb-standings-table">
                   <thead>
                     <tr style={{ borderBottom: "2px solid var(--navy)" }}>
                       {["#", "Drużyna", "M", "W", "P", "Sety", "Punkty", "Pkt lig."].map((h, i) => (
@@ -756,7 +816,7 @@ export default function VolleyballLeagueApp() {
               </div>
             )}
             {matches.length === 0 ? (
-              <EmptyState text="Brak zaplanowanych meczów. Dodaj mecze w panelu Admin." />
+              <EmptyState icon={CalendarDays} text="Brak zaplanowanych meczów. Dodaj mecze w panelu Admin." />
             ) : (
               rounds.map((round) => (
                 <div key={round} style={{ marginBottom: 22 }}>
@@ -770,12 +830,8 @@ export default function VolleyballLeagueApp() {
                     .map((m) => {
                     const o = matchOutcome(m);
                     return (
-                      <div key={m.id} style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "10px 14px", background: "#FFFFFF", border: "1px solid #DFD8C8",
-                        borderRadius: 4, marginBottom: 6, flexWrap: "wrap", gap: 6,
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, flexWrap: "wrap" }}>
+                      <div key={m.id} className="vb-match-card">
+                        <div className="vb-match-info">
                           <span style={{ fontSize: 12, color: "var(--grey)", minWidth: 150 }}>
                             {m.date ? formatDate(m.date) : ""}{m.time ? ` · ${m.time}` : ""}{m.venue ? ` · ${m.venue}` : ""}
                           </span>
@@ -783,7 +839,7 @@ export default function VolleyballLeagueApp() {
                           <span style={{ color: "var(--grey)" }}>vs</span>
                           <span style={{ fontWeight: o.winner === "away" ? 700 : 400 }}>{teamName(m.awayId)}</span>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div className="vb-match-actions">
                           {o.played ? (
                             <span className="vb-display" style={{ fontSize: 20, color: "var(--navy)" }}>
                               {o.homeSets} : {o.awaySets}
@@ -798,7 +854,7 @@ export default function VolleyballLeagueApp() {
                           ) : (
                             <span style={{ fontSize: 12, color: "var(--grey)", fontStyle: "italic" }}>do rozegrania</span>
                           )}
-                          <button onClick={() => setPrintMatchId(m.id)} title="Drukuj protokół meczowy" style={{ background: "none", border: "1px solid #C9C2B3", borderRadius: 4, cursor: "pointer", color: "var(--navy)", display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 7px" }}>
+                          <button onClick={() => setPrintMatchId(m.id)} title="Drukuj protokół meczowy" style={{ background: "none", border: "1px solid #C9C2B3", borderRadius: 8, cursor: "pointer", color: "var(--navy)", display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "3px 7px" }}>
                             <Printer size={13} /> Protokół
                           </button>
                         </div>
@@ -812,12 +868,21 @@ export default function VolleyballLeagueApp() {
         )}
 
         {tab === "admin" && !unlocked && (
-          <div style={{ maxWidth: 340, margin: "40px auto", textAlign: "center" }}>
+          <div style={{
+            maxWidth: 340, margin: "48px auto", textAlign: "center",
+            background: "#fff", border: "1px solid var(--line)", borderRadius: "var(--radius)",
+            boxShadow: "var(--shadow-md)", padding: "28px 26px",
+          }}>
             {adminPasswordExists === false ? (
               <>
-                <KeyRound size={28} color="var(--oak)" style={{ marginBottom: 10 }} />
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Ustaw hasło administratora</div>
-                <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 14 }}>Będzie potrzebne do zarządzania drużynami i wynikami.</div>
+                <div style={{
+                  width: 52, height: 52, borderRadius: "50%", background: "var(--chalk-2)",
+                  display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px auto",
+                }}>
+                  <KeyRound size={24} color="var(--oak)" />
+                </div>
+                <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 15 }}>Ustaw hasło administratora</div>
+                <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 16 }}>Będzie potrzebne do zarządzania drużynami i wynikami.</div>
                 <input type="password" className="vb-input" placeholder="Nowe hasło" value={passInput}
                   onChange={(e) => setPassInput(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
                 <input type="password" className="vb-input" placeholder="Powtórz hasło" value={passInput2}
@@ -829,8 +894,13 @@ export default function VolleyballLeagueApp() {
               </>
             ) : (
               <>
-                <Lock size={28} color="var(--oak)" style={{ marginBottom: 10 }} />
-                <div style={{ fontWeight: 600, marginBottom: 14 }}>Panel administratora</div>
+                <div style={{
+                  width: 52, height: 52, borderRadius: "50%", background: "var(--chalk-2)",
+                  display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px auto",
+                }}>
+                  <Lock size={24} color="var(--oak)" />
+                </div>
+                <div style={{ fontWeight: 700, marginBottom: 16, fontSize: 15 }}>Panel administratora</div>
                 <input type="password" className="vb-input" placeholder="Hasło" value={passInput}
                   onChange={(e) => setPassInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
@@ -860,14 +930,14 @@ export default function VolleyballLeagueApp() {
                   <div key={s.id} style={{
                     display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
                     background: s.id === selectedSeasonId ? "#EAE5D9" : "#fff",
-                    border: "1px solid #DFD8C8", borderRadius: 4, padding: "8px 10px",
+                    border: "1px solid #DFD8C8", borderRadius: 8, padding: "8px 10px",
                   }}>
                     <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 100 }}>{s.name}</span>
                     {s.id === currentSeasonId && (
-                      <span style={{ fontSize: 11, color: "var(--oak)", border: "1px solid var(--oak)", borderRadius: 3, padding: "2px 6px" }}>Aktualny</span>
+                      <span style={{ fontSize: 11, color: "var(--oak)", border: "1px solid var(--oak)", borderRadius: 6, padding: "2px 6px" }}>Aktualny</span>
                     )}
                     {s.id === selectedSeasonId && (
-                      <span style={{ fontSize: 11, color: "var(--navy)", border: "1px solid var(--navy)", borderRadius: 3, padding: "2px 6px" }}>Przeglądasz</span>
+                      <span style={{ fontSize: 11, color: "var(--navy)", border: "1px solid var(--navy)", borderRadius: 6, padding: "2px 6px" }}>Przeglądasz</span>
                     )}
                     {s.id !== selectedSeasonId && (
                       <button className="vb-btn" style={{ background: "none", border: "1px solid #C9C2B3", color: "var(--navy)", fontSize: 12, padding: "4px 8px" }} onClick={() => switchSeason(s.id)}>
@@ -937,7 +1007,7 @@ export default function VolleyballLeagueApp() {
                   {teams.map((t) => (
                     <div key={t.id} style={{
                       display: "flex", alignItems: "center", gap: 8, background: "#fff",
-                      border: "1px solid #DFD8C8", borderRadius: 4, padding: "6px 10px", fontSize: 13,
+                      border: "1px solid #DFD8C8", borderRadius: 8, padding: "6px 10px", fontSize: 13,
                     }}>
                       {t.name}
                       <button onClick={() => deleteTeam(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
@@ -970,7 +1040,7 @@ export default function VolleyballLeagueApp() {
                   {venues.map((v) => (
                     <div key={v.id} style={{
                       display: "flex", alignItems: "center", gap: 8, background: "#fff",
-                      border: "1px solid #DFD8C8", borderRadius: 4, padding: "6px 10px", fontSize: 13,
+                      border: "1px solid #DFD8C8", borderRadius: 8, padding: "6px 10px", fontSize: 13,
                     }}>
                       {v.name}
                       <button onClick={() => deleteVenue(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
@@ -1001,13 +1071,13 @@ export default function VolleyballLeagueApp() {
 
               <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 10 }}>
                 {dateRows.map((row) => (
-                  <div key={row.id} style={{ border: "1px solid #DFD8C8", background: "#fff", borderRadius: 4, padding: 10 }}>
+                  <div key={row.id} style={{ border: "1px solid #DFD8C8", background: "#fff", borderRadius: 8, padding: 10 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                       <input className="vb-input" style={{ width: 155 }} type="date" value={row.date}
                         onChange={(e) => updateDateRowDate(row.id, e.target.value)} />
                       <span style={{ fontSize: 12, color: "var(--grey)" }}>{row.slots.length} slot(y) meczowe tego dnia</span>
                       <button onClick={() => duplicateDateRow(row.id)} title="Duplikuj ten dzień (te same sloty, nowa data)" style={{
-                        background: "none", border: "1px solid #C9C2B3", borderRadius: 4, cursor: "pointer", color: "var(--navy)",
+                        background: "none", border: "1px solid #C9C2B3", borderRadius: 8, cursor: "pointer", color: "var(--navy)",
                         display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 8px", marginLeft: "auto",
                       }}>
                         <Copy size={13} /> Duplikuj dzień
@@ -1054,7 +1124,7 @@ export default function VolleyballLeagueApp() {
               </button>
 
               {genPreview && (
-                <div style={{ marginTop: 14, padding: 12, background: "#fff", border: "1px solid #DFD8C8", borderRadius: 4 }}>
+                <div style={{ marginTop: 14, padding: 12, background: "#fff", border: "1px solid #DFD8C8", borderRadius: 8 }}>
                   <div style={{ fontSize: 13, marginBottom: 6 }}>
                     Wygenerowano <strong>{genPreview.scheduled.length}</strong> z {genPreview.totalMatches} meczów w {genPreview.roundsCount} kolejkach.
                   </div>
@@ -1123,7 +1193,7 @@ export default function VolleyballLeagueApp() {
                 Możesz przełożyć mecz na inny termin, zamienić kolejkę albo zamienić drużyny — zmiany zapisują się od razu.
               </div>
               {Object.keys(venueConflicts).length > 0 && (
-                <div style={{ display: "flex", gap: 6, alignItems: "flex-start", background: "#F6E4DE", color: "var(--rust)", fontSize: 13, padding: "8px 12px", borderRadius: 4, marginBottom: 10 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-start", background: "#F6E4DE", color: "var(--rust)", fontSize: 13, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>
                   <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
                   Wykryto kolizje terminów — dwa mecze oznaczone poniżej są zaplanowane na tę samą halę, ten sam dzień i tę samą godzinę. Popraw datę, godzinę lub halę jednego z nich.
                 </div>
@@ -1145,9 +1215,9 @@ export default function VolleyballLeagueApp() {
                     return (
                       <div key={m.id} style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
-                        background: "#fff", border: hasConflict ? "1px solid var(--rust)" : "1px solid #DFD8C8", borderRadius: 4, padding: "10px 14px", marginBottom: 8,
+                        background: "#fff", border: hasConflict ? "1px solid var(--rust)" : "1px solid #DFD8C8", borderRadius: 8, padding: "10px 14px", marginBottom: 8,
                       }}>
-                        <div style={{ minWidth: 260, display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ minWidth: "min(260px, 100%)", flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 6 }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                             <span style={{ fontSize: 11, color: "var(--grey)" }}>Kolejka</span>
                             <input className="vb-input" style={{ width: 46, padding: "3px 6px" }} value={m.round}
@@ -1213,7 +1283,7 @@ export default function VolleyballLeagueApp() {
                           ) : (
                             <span style={{ fontSize: 12, color: "var(--grey)" }}>w trakcie</span>
                           )}
-                          <button onClick={() => setPrintMatchId(m.id)} title="Drukuj protokół meczowy" style={{ background: "none", border: "1px solid #C9C2B3", borderRadius: 4, cursor: "pointer", color: "var(--navy)", display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 8px" }}>
+                          <button onClick={() => setPrintMatchId(m.id)} title="Drukuj protokół meczowy" style={{ background: "none", border: "1px solid #C9C2B3", borderRadius: 8, cursor: "pointer", color: "var(--navy)", display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 8px" }}>
                             <Printer size={14} /> Protokół
                           </button>
                           <button onClick={() => deleteMatch(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
@@ -1265,37 +1335,50 @@ function Section({ title, children, defaultOpen = false, compact = false }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div style={{
-      marginBottom: compact ? 8 : 12,
-      border: "1px solid #DFD8C8",
-      borderRadius: 4,
+      marginBottom: compact ? 8 : 14,
+      border: "1px solid var(--line)",
+      borderRadius: "var(--radius)",
       background: compact ? "var(--chalk)" : "#fff",
       overflow: "hidden",
+      boxShadow: compact ? "none" : "var(--shadow-sm)",
+      transition: "box-shadow 0.15s ease",
     }}>
       <button
         onClick={() => setOpen(!open)}
         style={{
           width: "100%", background: "none", border: "none", cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: compact ? "8px 12px" : "12px 14px",
+          padding: compact ? "9px 12px" : "13px 16px",
           fontWeight: 700, fontSize: compact ? 13 : 14, color: "var(--navy)",
           fontFamily: "'IBM Plex Sans', sans-serif", textAlign: "left",
         }}
       >
         {title}
-        {open ? <ChevronDown size={compact ? 14 : 16} color="var(--oak)" /> : <ChevronRight size={compact ? 14 : 16} color="var(--oak)" />}
+        <ChevronDown
+          size={compact ? 14 : 16}
+          color="var(--oak)"
+          style={{ transition: "transform 0.18s ease", transform: open ? "rotate(0deg)" : "rotate(-90deg)", flexShrink: 0, marginLeft: 8 }}
+        />
       </button>
-      {open && <div style={{ padding: compact ? "0 10px 10px 10px" : "0 14px 14px 14px" }}>{children}</div>}
+      {open && <div style={{ padding: compact ? "0 12px 12px 12px" : "0 16px 16px 16px" }}>{children}</div>}
     </div>
   );
 }
 
-function EmptyState({ text }) {
+function EmptyState({ text, icon: Icon = CalendarDays }) {
   return (
     <div style={{
-      textAlign: "center", padding: "40px 20px", color: "var(--grey)", border: "1px dashed #C9C2B3",
-      borderRadius: 4, fontSize: 14,
+      textAlign: "center", padding: "52px 24px", color: "var(--grey)",
+      border: "1px dashed #CDC5AF", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.5)",
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
     }}>
-      {text}
+      <div style={{
+        width: 44, height: 44, borderRadius: "50%", background: "var(--chalk-2)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Icon size={20} color="var(--oak)" />
+      </div>
+      <div style={{ fontSize: 14, maxWidth: 320, lineHeight: 1.5 }}>{text}</div>
     </div>
   );
 }
@@ -1476,7 +1559,7 @@ function MatchProtocol({ match, teams, seasonName, onClose }) {
           <div className="vb-sig-line"></div>
         </div>
 
-        <div style={{ display: "flex", gap: 20, marginTop: 30 }}>
+        <div className="vb-sig-row" style={{ display: "flex", gap: 20, marginTop: 30 }}>
           {["Sędzia", `Kapitan — ${teamName(match.homeId)}`, `Kapitan — ${teamName(match.awayId)}`].map((label) => (
             <div key={label} style={{ flex: 1, textAlign: "center" }}>
               <div className="vb-sig-line"></div>
