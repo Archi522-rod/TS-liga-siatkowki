@@ -2,7 +2,7 @@
 
 Ten folder to gotowy projekt (Vite + React), połączony z Supabase. Poniżej
 pełna ścieżka: od zera do działającej strony pod własnym adresem, z automatycznym
-HTTPS i możliwością instalacji jako aplikacja (PWA).
+HTTPS i możliwością instalacji jako aplikacja (PWA). 
 
 Zakładam, że nie masz jeszcze konta na żadnej z tych usług — jeśli coś już masz,
 po prostu pomiń dany krok.
