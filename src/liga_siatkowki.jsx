@@ -104,7 +104,8 @@ const FONT_STYLE = `
   border-radius: 50%; box-shadow: 0 0 0 2px rgba(240, 169, 59, 0.35), var(--shadow-sm);
 }
 .vb-title { color: var(--amber); font-size: clamp(22px, 6.5vw, 34px); line-height: 1; }
-.vb-tabs { display: flex; gap: clamp(8px, 2.5vw, 12px); overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 6px 0 16px 0; max-width: 920px; margin-left: auto; margin-right: auto; }
+.vb-tabs { display: flex; gap: clamp(8px, 2.5vw, 12px); overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 6px 0 16px 0; max-width: 920px; margin-left: auto; margin-right: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.vb-tabs::-webkit-scrollbar { display: none; }
 .vb-tab-btn { display: flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: 999px; font-size: clamp(12px, 3.2vw, 14px); font-weight: 600; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; white-space: nowrap; }
 .vb-content { padding: clamp(14px, 4vw, 26px); max-width: 920px; margin: 0 auto; }
 
@@ -140,6 +141,17 @@ const FONT_STYLE = `
   .vb-match-actions { width: 100%; justify-content: space-between; }
   .vb-sig-row { flex-direction: column !important; }
   .vb-protocol-sheet, .vb-poster-sheet { padding: 20px 16px !important; }
+  .vb-standings-wrap { overflow-x: hidden; }
+  .vb-standings-table { min-width: 0 !important; table-layout: fixed; width: 100%; }
+  .vb-standings-table th, .vb-standings-table td { padding: 8px 3px !important; font-size: 11px !important; }
+  .vb-standings-table th:nth-child(1), .vb-standings-table td:nth-child(1) { width: 8%; }
+  .vb-standings-table th:nth-child(2), .vb-standings-table td:nth-child(2) { width: 26%; white-space: normal; word-break: break-word; line-height: 1.25; }
+  .vb-standings-table th:nth-child(3), .vb-standings-table td:nth-child(3),
+  .vb-standings-table th:nth-child(4), .vb-standings-table td:nth-child(4),
+  .vb-standings-table th:nth-child(5), .vb-standings-table td:nth-child(5) { width: 7%; }
+  .vb-standings-table th:nth-child(6), .vb-standings-table td:nth-child(6),
+  .vb-standings-table th:nth-child(7), .vb-standings-table td:nth-child(7) { width: 15%; white-space: nowrap; }
+  .vb-standings-table th:nth-child(8), .vb-standings-table td:nth-child(8) { width: 15%; }
 }
 @media print {
   #vb-app-content, .vb-no-print { display: none !important; }
@@ -352,6 +364,7 @@ function assignToDates(rounds, dateRows) {
 
 export default function VolleyballLeagueApp() {
   const [tab, setTab] = useState("tabela");
+  const [selectedRound, setSelectedRound] = useState("all");
   const [teams, setTeams] = useState([]);
   const [matches, setMatches] = useState([]);
   const [venues, setVenues] = useState([]);
@@ -873,7 +886,21 @@ export default function VolleyballLeagueApp() {
         {tab === "terminarz" && (
           <div>
             {matches.length > 0 && (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, color: "var(--grey)" }}>Kolejka</span>
+                  <select
+                    className="vb-input"
+                    value={selectedRound}
+                    onChange={(e) => setSelectedRound(e.target.value)}
+                    style={{ padding: "6px 10px" }}
+                  >
+                    <option value="all">Wszystkie</option>
+                    {rounds.map((r) => (
+                      <option key={r} value={r}>Kolejka {r}{r === activeRound ? " (bieżąca)" : ""}</option>
+                    ))}
+                  </select>
+                </div>
                 <button onClick={() => setPosterOpen(true)} className="vb-btn" style={{
                   background: "var(--navy)", color: "var(--chalk)", display: "flex", alignItems: "center", gap: 6, fontSize: 13,
                 }}>
@@ -884,7 +911,9 @@ export default function VolleyballLeagueApp() {
             {matches.length === 0 ? (
               <EmptyState icon={CalendarDays} text="Brak zaplanowanych meczów. Dodaj mecze w panelu Admin." />
             ) : (
-              rounds.map((round) => (
+              rounds
+                .filter((round) => selectedRound === "all" || round === selectedRound)
+                .map((round) => (
                 <div key={round} style={{ marginBottom: 22 }}>
                   <div className="vb-display" style={{ fontSize: 18, color: "var(--oak)", marginBottom: 8 }}>
                     KOLEJKA {round}
@@ -1081,6 +1110,125 @@ export default function VolleyballLeagueApp() {
                 </div>
                 {seasonError && <div style={{ color: "var(--rust)", fontSize: 13, marginTop: 8 }}>{seasonError}</div>}
               </div>
+            </Section>
+
+            {/* Match results */}
+            <Section title="Terminarz i wyniki (edytuj w razie zmian)" defaultOpen>
+              <div style={{ fontSize: 12, color: "var(--grey)", marginBottom: 10 }}>
+                Możesz przełożyć mecz na inny termin, zamienić kolejkę albo zamienić drużyny — zmiany zapisują się od razu.
+              </div>
+              {Object.keys(venueConflicts).length > 0 && (
+                <div style={{ display: "flex", gap: 6, alignItems: "flex-start", background: "#F6E4DE", color: "var(--rust)", fontSize: 13, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>
+                  <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+                  Wykryto kolizje terminów — dwa mecze oznaczone poniżej są zaplanowane na tę samą halę, ten sam dzień i tę samą godzinę. Popraw datę, godzinę lub halę jednego z nich.
+                </div>
+              )}
+              {matches.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--grey)" }}>Brak meczów.</div>
+              ) : (
+                rounds.map((round) => (
+                  <Section key={round} title={`Kolejka ${round}`} defaultOpen={round === activeRound} compact>
+                    {matches
+                      .filter((m) => m.round === round)
+                      .slice()
+                      .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""))
+                      .map((m) => {
+                    const o = matchOutcome(m);
+                    const hasConflict = Boolean(venueConflicts[m.id]);
+                    const sets = [...(m.sets || [])];
+                    while (sets.length < 5) sets.push({ home: "", away: "" });
+                    return (
+                      <div key={m.id} style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
+                        background: "#fff", border: hasConflict ? "1px solid var(--rust)" : "1px solid #DFD8C8", borderRadius: 8, padding: "10px 14px", marginBottom: 8,
+                      }}>
+                        <div style={{ minWidth: "min(260px, 100%)", flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 11, color: "var(--grey)" }}>Kolejka</span>
+                            <input className="vb-input" style={{ width: 46, padding: "3px 6px" }} value={m.round}
+                              onChange={(e) => updateMatchField(m.id, "round", e.target.value.replace(/[^0-9]/g, ""))} />
+                            <input className="vb-input" style={{ width: 140, padding: "3px 6px", borderColor: hasConflict ? "var(--rust)" : undefined }} type="date" value={m.date || ""}
+                              onChange={(e) => updateMatchField(m.id, "date", e.target.value)} />
+                            <input className="vb-input" style={{ width: 90, padding: "3px 6px", borderColor: hasConflict ? "var(--rust)" : undefined }} type="time" value={m.time || ""}
+                              onChange={(e) => updateMatchField(m.id, "time", e.target.value)} />
+                            <select className="vb-input" style={{ width: 110, padding: "3px 6px", borderColor: hasConflict ? "var(--rust)" : undefined }} value={m.venue || ""}
+                              onChange={(e) => updateMatchField(m.id, "venue", e.target.value)}>
+                              <option value="">Hala</option>
+                              {venues.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
+                              {m.venue && !venues.some((v) => v.name === m.venue) && (
+                                <option value={m.venue}>{m.venue} (usunięta)</option>
+                              )}
+                            </select>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <select className="vb-input" style={{ padding: "3px 6px", maxWidth: 110 }} value={m.homeId}
+                              onChange={(e) => updateMatchField(m.id, "homeId", e.target.value)}>
+                              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                            <span style={{ color: "var(--grey)", fontSize: 12 }}>vs</span>
+                            <select className="vb-input" style={{ padding: "3px 6px", maxWidth: 110 }} value={m.awayId}
+                              onChange={(e) => updateMatchField(m.id, "awayId", e.target.value)}>
+                              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                          </div>
+                          {m.homeId === m.awayId && (
+                            <div style={{ fontSize: 11, color: "var(--rust)" }}>Wybierz dwie różne drużyny.</div>
+                          )}
+                          {hasConflict && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--rust)" }}>
+                              <AlertTriangle size={12} /> Kolizja: ta sama hala i godzina co inny mecz tego dnia.
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2, marginRight: 4, maxWidth: 96 }}>
+                              <span style={{ display: "block", fontSize: 11, color: "var(--navy)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={teamName(m.homeId)}>
+                                {teamName(m.homeId)}
+                              </span>
+                              <span style={{ display: "block", fontSize: 11, color: "var(--navy)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={teamName(m.awayId)}>
+                                {teamName(m.awayId)}
+                              </span>
+                            </div>
+                            {sets.map((s, i) => {
+                              const invalid = setInvalid(s);
+                              return (
+                                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                                  <input className="vb-score-input" style={invalid ? { borderColor: "var(--rust)" } : undefined} value={s.home}
+                                    onChange={(e) => updateSet(m.id, i, "home", e.target.value)} maxLength={2} />
+                                  <input className="vb-score-input" style={invalid ? { borderColor: "var(--rust)" } : undefined} value={s.away}
+                                    onChange={(e) => updateSet(m.id, i, "away", e.target.value)} maxLength={2} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {sets.some((s) => setInvalid(s)) && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--rust)", maxWidth: 160 }}>
+                              <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Różnica musi wynosić min. 2 pkt — set się nie liczy.
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          {o.played ? (
+                            <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--oak)", fontSize: 12 }}>
+                              <Check size={14} /> {o.homeSets}:{o.awaySets}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "var(--grey)" }}>w trakcie</span>
+                          )}
+                          <button onClick={() => setPrintMatchId(m.id)} title="Drukuj protokół meczowy" style={{ background: "none", border: "1px solid #C9C2B3", borderRadius: 8, cursor: "pointer", color: "var(--navy)", display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 8px" }}>
+                            <Printer size={14} /> Protokół
+                          </button>
+                          <button onClick={() => deleteMatch(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                      })}
+                  </Section>
+                ))
+              )}
             </Section>
 
             {/* Teams management */}
@@ -1345,124 +1493,6 @@ export default function VolleyballLeagueApp() {
               {teams.length < 2 && <div style={{ fontSize: 12, color: "var(--grey)", marginTop: 6 }}>Dodaj co najmniej 2 drużyny, żeby zaplanować mecz.</div>}
             </Section>
 
-            {/* Match results */}
-            <Section title="Terminarz i wyniki (edytuj w razie zmian)" defaultOpen>
-              <div style={{ fontSize: 12, color: "var(--grey)", marginBottom: 10 }}>
-                Możesz przełożyć mecz na inny termin, zamienić kolejkę albo zamienić drużyny — zmiany zapisują się od razu.
-              </div>
-              {Object.keys(venueConflicts).length > 0 && (
-                <div style={{ display: "flex", gap: 6, alignItems: "flex-start", background: "#F6E4DE", color: "var(--rust)", fontSize: 13, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>
-                  <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
-                  Wykryto kolizje terminów — dwa mecze oznaczone poniżej są zaplanowane na tę samą halę, ten sam dzień i tę samą godzinę. Popraw datę, godzinę lub halę jednego z nich.
-                </div>
-              )}
-              {matches.length === 0 ? (
-                <div style={{ fontSize: 13, color: "var(--grey)" }}>Brak meczów.</div>
-              ) : (
-                rounds.map((round) => (
-                  <Section key={round} title={`Kolejka ${round}`} defaultOpen={round === activeRound} compact>
-                    {matches
-                      .filter((m) => m.round === round)
-                      .slice()
-                      .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""))
-                      .map((m) => {
-                    const o = matchOutcome(m);
-                    const hasConflict = Boolean(venueConflicts[m.id]);
-                    const sets = [...(m.sets || [])];
-                    while (sets.length < 5) sets.push({ home: "", away: "" });
-                    return (
-                      <div key={m.id} style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
-                        background: "#fff", border: hasConflict ? "1px solid var(--rust)" : "1px solid #DFD8C8", borderRadius: 8, padding: "10px 14px", marginBottom: 8,
-                      }}>
-                        <div style={{ minWidth: "min(260px, 100%)", flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 6 }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 11, color: "var(--grey)" }}>Kolejka</span>
-                            <input className="vb-input" style={{ width: 46, padding: "3px 6px" }} value={m.round}
-                              onChange={(e) => updateMatchField(m.id, "round", e.target.value.replace(/[^0-9]/g, ""))} />
-                            <input className="vb-input" style={{ width: 140, padding: "3px 6px", borderColor: hasConflict ? "var(--rust)" : undefined }} type="date" value={m.date || ""}
-                              onChange={(e) => updateMatchField(m.id, "date", e.target.value)} />
-                            <input className="vb-input" style={{ width: 90, padding: "3px 6px", borderColor: hasConflict ? "var(--rust)" : undefined }} type="time" value={m.time || ""}
-                              onChange={(e) => updateMatchField(m.id, "time", e.target.value)} />
-                            <select className="vb-input" style={{ width: 110, padding: "3px 6px", borderColor: hasConflict ? "var(--rust)" : undefined }} value={m.venue || ""}
-                              onChange={(e) => updateMatchField(m.id, "venue", e.target.value)}>
-                              <option value="">Hala</option>
-                              {venues.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
-                              {m.venue && !venues.some((v) => v.name === m.venue) && (
-                                <option value={m.venue}>{m.venue} (usunięta)</option>
-                              )}
-                            </select>
-                          </div>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                            <select className="vb-input" style={{ padding: "3px 6px", maxWidth: 110 }} value={m.homeId}
-                              onChange={(e) => updateMatchField(m.id, "homeId", e.target.value)}>
-                              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </select>
-                            <span style={{ color: "var(--grey)", fontSize: 12 }}>vs</span>
-                            <select className="vb-input" style={{ padding: "3px 6px", maxWidth: 110 }} value={m.awayId}
-                              onChange={(e) => updateMatchField(m.id, "awayId", e.target.value)}>
-                              {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </select>
-                          </div>
-                          {m.homeId === m.awayId && (
-                            <div style={{ fontSize: 11, color: "var(--rust)" }}>Wybierz dwie różne drużyny.</div>
-                          )}
-                          {hasConflict && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--rust)" }}>
-                              <AlertTriangle size={12} /> Kolizja: ta sama hala i godzina co inny mecz tego dnia.
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 2, marginRight: 2 }}>
-                              <span style={{ fontSize: 11, color: "var(--navy)", fontWeight: 600, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={teamName(m.homeId)}>
-                                {teamName(m.homeId)}
-                              </span>
-                              <span style={{ fontSize: 11, color: "var(--navy)", fontWeight: 600, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={teamName(m.awayId)}>
-                                {teamName(m.awayId)}
-                              </span>
-                            </div>
-                            {sets.map((s, i) => {
-                              const invalid = setInvalid(s);
-                              return (
-                                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                                  <input className="vb-score-input" style={invalid ? { borderColor: "var(--rust)" } : undefined} value={s.home}
-                                    onChange={(e) => updateSet(m.id, i, "home", e.target.value)} maxLength={2} />
-                                  <input className="vb-score-input" style={invalid ? { borderColor: "var(--rust)" } : undefined} value={s.away}
-                                    onChange={(e) => updateSet(m.id, i, "away", e.target.value)} maxLength={2} />
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {sets.some((s) => setInvalid(s)) && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--rust)", maxWidth: 160 }}>
-                              <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Różnica musi wynosić min. 2 pkt — set się nie liczy.
-                            </div>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          {o.played ? (
-                            <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--oak)", fontSize: 12 }}>
-                              <Check size={14} /> {o.homeSets}:{o.awaySets}
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: 12, color: "var(--grey)" }}>w trakcie</span>
-                          )}
-                          <button onClick={() => setPrintMatchId(m.id)} title="Drukuj protokół meczowy" style={{ background: "none", border: "1px solid #C9C2B3", borderRadius: 8, cursor: "pointer", color: "var(--navy)", display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 8px" }}>
-                            <Printer size={14} /> Protokół
-                          </button>
-                          <button onClick={() => deleteMatch(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                      })}
-                  </Section>
-                ))
-              )}
-            </Section>
 
             <button onClick={() => setUnlocked(false)} style={{
               background: "none", border: "none", color: "var(--grey)", fontSize: 12, cursor: "pointer",
@@ -1718,6 +1748,11 @@ function MatchProtocol({ match, teams, seasonName, onClose }) {
             Punkty w setach: {o.homePts}:{o.awayPts} &nbsp;•&nbsp; Punkty ligowe: {o.leaguePts.home}:{o.leaguePts.away}
           </div>
         )}
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Zawodnik meczu (MVP):</div>
+          <div className="vb-sig-line"></div>
+        </div>
 
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Uwagi / zastrzeżenia:</div>
