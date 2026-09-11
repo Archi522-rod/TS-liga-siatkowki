@@ -90,15 +90,15 @@ const FONT_STYLE = `
   position: sticky; top: 0; z-index: 20;
   box-shadow: 0 6px 20px rgba(10, 22, 28, 0.25);
 }
-.vb-header-top { display: flex; align-items: center; gap: 12px; margin-bottom: clamp(10px, 3vw, 16px); flex-wrap: wrap; }
+.vb-header-top { display: flex; align-items: center; gap: 12px; margin-bottom: clamp(10px, 3vw, 16px); flex-wrap: wrap; max-width: 920px; margin-left: auto; margin-right: auto; }
 .vb-logo {
   width: clamp(32px, 8vw, 46px); height: clamp(32px, 8vw, 46px); flex-shrink: 0;
   border-radius: 50%; box-shadow: 0 0 0 2px rgba(240, 169, 59, 0.35), var(--shadow-sm);
 }
 .vb-title { color: var(--amber); font-size: clamp(22px, 6.5vw, 34px); line-height: 1; }
-.vb-tabs { display: flex; gap: clamp(14px, 4vw, 28px); overflow-x: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid rgba(242, 239, 233, 0.08); }
+.vb-tabs { display: flex; gap: clamp(14px, 4vw, 28px); overflow-x: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid rgba(242, 239, 233, 0.08); max-width: 920px; margin-left: auto; margin-right: auto; }
 .vb-tab-btn { background: none; display: flex; align-items: center; gap: 7px; padding: 10px 2px 11px 2px; font-size: clamp(12px, 3.2vw, 14px); font-weight: 600; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; white-space: nowrap; }
-.vb-content { padding: clamp(14px, 4vw, 26px); max-width: 980px; margin: 0 auto; }
+.vb-content { padding: clamp(14px, 4vw, 26px); max-width: 920px; margin: 0 auto; }
 
 .vb-match-card {
   display: flex; align-items: center; justify-content: space-between;
@@ -879,7 +879,7 @@ export default function VolleyballLeagueApp() {
                   {matches
                     .filter((m) => m.round === round)
                     .slice()
-                    .sort((a, b) => (a.time || "").localeCompare(b.time || ""))
+                    .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""))
                     .map((m) => {
                     const o = matchOutcome(m);
                     return (
@@ -1349,7 +1349,7 @@ export default function VolleyballLeagueApp() {
                     {matches
                       .filter((m) => m.round === round)
                       .slice()
-                      .sort((a, b) => (a.time || "").localeCompare(b.time || ""))
+                      .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""))
                       .map((m) => {
                     const o = matchOutcome(m);
                     const hasConflict = Boolean(venueConflicts[m.id]);
