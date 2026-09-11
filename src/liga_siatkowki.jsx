@@ -110,6 +110,8 @@ const FONT_STYLE = `
 }
 .vb-match-card:hover { box-shadow: var(--shadow-md); border-left-color: var(--oak); transform: translateY(-1px); }
 .vb-match-info { display: flex; align-items: center; gap: 14px; flex: 1 1 260px; flex-wrap: wrap; min-width: 0; }
+.vb-match-date { font-size: 12px; color: var(--grey); white-space: nowrap; }
+.vb-match-teams { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .vb-match-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 .vb-standings-wrap {
@@ -123,8 +125,11 @@ const FONT_STYLE = `
 .vb-standings-table tbody tr:hover { background-color: #F5F0E4 !important; }
 
 @media (max-width: 480px) {
-  .vb-match-info { gap: 8px; }
-  .vb-match-info > span:first-child { min-width: 0 !important; flex-basis: 100%; }
+  .vb-tabs { gap: 6px; }
+  .vb-tab-btn { font-size: 11.5px; gap: 4px; padding: 8px 1px 9px 1px; }
+  .vb-match-card { flex-direction: column; align-items: stretch; gap: 8px; }
+  .vb-match-info { flex-direction: column; align-items: flex-start; gap: 6px; flex: none; }
+  .vb-match-actions { width: 100%; justify-content: space-between; }
   .vb-sig-row { flex-direction: column !important; }
   .vb-protocol-sheet, .vb-poster-sheet { padding: 20px 16px !important; }
 }
@@ -885,12 +890,14 @@ export default function VolleyballLeagueApp() {
                     return (
                       <div key={m.id} className="vb-match-card">
                         <div className="vb-match-info">
-                          <span style={{ fontSize: 12, color: "var(--grey)", minWidth: 150 }}>
+                          <span className="vb-match-date">
                             {m.date ? formatDate(m.date) : ""}{m.time ? ` · ${m.time}` : ""}{m.venue ? ` · ${m.venue}` : ""}
                           </span>
-                          <span style={{ fontWeight: o.winner === "home" ? 700 : 400 }}>{teamName(m.homeId)}</span>
-                          <span style={{ color: "var(--grey)" }}>vs</span>
-                          <span style={{ fontWeight: o.winner === "away" ? 700 : 400 }}>{teamName(m.awayId)}</span>
+                          <span className="vb-match-teams">
+                            <span style={{ fontWeight: o.winner === "home" ? 700 : 400 }}>{teamName(m.homeId)}</span>
+                            <span style={{ color: "var(--grey)" }}>vs</span>
+                            <span style={{ fontWeight: o.winner === "away" ? 700 : 400 }}>{teamName(m.awayId)}</span>
+                          </span>
                         </div>
                         <div className="vb-match-actions">
                           {o.played ? (
