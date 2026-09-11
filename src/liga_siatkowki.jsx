@@ -145,7 +145,7 @@ const FONT_STYLE = `
   .vb-standings-table { min-width: 0 !important; table-layout: fixed; width: 100%; }
   .vb-standings-table th, .vb-standings-table td { padding: 8px 3px !important; font-size: 11px !important; }
   .vb-standings-table th:nth-child(1), .vb-standings-table td:nth-child(1) { width: 8%; }
-  .vb-standings-table th:nth-child(2), .vb-standings-table td:nth-child(2) { width: 26%; white-space: normal; word-break: break-word; line-height: 1.25; }
+  .vb-standings-table th:nth-child(2), .vb-standings-table td:nth-child(2) { width: 26%; white-space: normal; word-break: normal; overflow-wrap: break-word; line-height: 1.25; }
   .vb-standings-table th:nth-child(3), .vb-standings-table td:nth-child(3),
   .vb-standings-table th:nth-child(4), .vb-standings-table td:nth-child(4),
   .vb-standings-table th:nth-child(5), .vb-standings-table td:nth-child(5) { width: 7%; }
