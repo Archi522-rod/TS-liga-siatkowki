@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Trophy, CalendarDays, Lock, Plus, Trash2, ShieldCheck, X, Check, KeyRound, Wand2, AlertTriangle, Copy, Printer, ChevronDown, ChevronRight } from "lucide-react";
+import { Trophy, CalendarDays, Lock, Plus, Trash2, ShieldCheck, X, Check, KeyRound, Wand2, AlertTriangle, Copy, Printer, ChevronDown, ChevronRight, Megaphone, Pencil } from "lucide-react";
 import { storage, adminAuth } from "./lib/storage";
 
 const FONT_STYLE = `
@@ -149,6 +149,16 @@ const CURRENT_SEASON_KEY = "vb-current-season";
 const teamsKey = (seasonId) => `vb-teams-${seasonId}`;
 const matchesKey = (seasonId) => `vb-matches-${seasonId}`;
 const venuesKey = (seasonId) => `vb-venues-${seasonId}`;
+const announcementsKey = (seasonId) => `vb-announcements-${seasonId}`;
+
+function formatDateTime(ts) {
+  if (!ts) return "";
+  try {
+    return new Date(ts).toLocaleDateString("pl-PL", { day: "numeric", month: "long", year: "numeric" });
+  } catch (e) {
+    return "";
+  }
+}
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -333,6 +343,10 @@ export default function VolleyballLeagueApp() {
   const [matches, setMatches] = useState([]);
   const [venues, setVenues] = useState([]);
   const [newVenueName, setNewVenueName] = useState("");
+  const [announcements, setAnnouncements] = useState([]);
+  const [newAnnouncementTitle, setNewAnnouncementTitle] = useState("");
+  const [newAnnouncementBody, setNewAnnouncementBody] = useState("");
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState(false);
 
@@ -418,9 +432,15 @@ export default function VolleyballLeagueApp() {
           const r = await storage.get(venuesKey(curId));
           if (r) v = JSON.parse(r.value);
         } catch (e) { /* brak hal */ }
+        let a = [];
+        try {
+          const r = await storage.get(announcementsKey(curId));
+          if (r) a = JSON.parse(r.value);
+        } catch (e) { /* brak ogłoszeń */ }
         setTeams(t);
         setMatches(m);
         setVenues(v);
+        setAnnouncements(a);
 
         try {
           const exists = await adminAuth.passwordExists();
@@ -454,7 +474,12 @@ export default function VolleyballLeagueApp() {
     setTeams(t);
     setMatches(m);
     setVenues(v);
-    setHala2Name("");
+    let a = [];
+    try {
+      const r = await storage.get(announcementsKey(id));
+      if (r) a = JSON.parse(r.value);
+    } catch (e) { /* brak ogłoszeń */ }
+    setAnnouncements(a);
   }
 
   async function createSeason() {
@@ -478,6 +503,7 @@ export default function VolleyballLeagueApp() {
       await storage.set(teamsKey(id), JSON.stringify(newTeams));
       await storage.set(matchesKey(id), JSON.stringify([]));
       await storage.set(venuesKey(id), JSON.stringify(newVenues));
+      await storage.set(announcementsKey(id), JSON.stringify([]));
       const nextSeasons = [...seasons, { id, name, createdAt: Date.now() }];
       await storage.set(SEASONS_KEY, JSON.stringify(nextSeasons));
       setSeasons(nextSeasons);
@@ -503,6 +529,7 @@ export default function VolleyballLeagueApp() {
     try { await storage.delete(teamsKey(id)); } catch (e) { /* ignore */ }
     try { await storage.delete(matchesKey(id)); } catch (e) { /* ignore */ }
     try { await storage.delete(venuesKey(id)); } catch (e) { /* ignore */ }
+    try { await storage.delete(announcementsKey(id)); } catch (e) { /* ignore */ }
     if (id === currentSeasonId) await setAsCurrentSeason(nextSeasons[0].id);
     if (id === selectedSeasonId) await switchSeason(nextSeasons[0].id);
   }
@@ -524,6 +551,31 @@ export default function VolleyballLeagueApp() {
     if (!selectedSeasonId) return;
     try { await storage.set(venuesKey(selectedSeasonId), JSON.stringify(next)); } catch (e) { setStorageError(true); }
   }, [selectedSeasonId]);
+
+  const saveAnnouncements = useCallback(async (next) => {
+    setAnnouncements(next);
+    if (!selectedSeasonId) return;
+    try { await storage.set(announcementsKey(selectedSeasonId), JSON.stringify(next)); } catch (e) { setStorageError(true); }
+  }, [selectedSeasonId]);
+
+  function addAnnouncement() {
+    const title = newAnnouncementTitle.trim();
+    const body = newAnnouncementBody.trim();
+    if (!title && !body) return;
+    const announcement = { id: uid(), title: title || "Ogłoszenie", body, createdAt: Date.now() };
+    saveAnnouncements([announcement, ...announcements]);
+    setNewAnnouncementTitle("");
+    setNewAnnouncementBody("");
+  }
+
+  function updateAnnouncementField(id, field, value) {
+    saveAnnouncements(announcements.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
+  }
+
+  function deleteAnnouncement(id) {
+    saveAnnouncements(announcements.filter((a) => a.id !== id));
+    if (editingAnnouncementId === id) setEditingAnnouncementId(null);
+  }
 
   function addTeam() {
     const name = newTeamName.trim();
@@ -738,6 +790,7 @@ export default function VolleyballLeagueApp() {
           {[
             { id: "tabela", label: "Tabela", icon: Trophy },
             { id: "terminarz", label: "Terminarz", icon: CalendarDays },
+            { id: "ogloszenia", label: "Ogłoszenia", icon: Megaphone },
             { id: "admin", label: "Admin", icon: Lock },
           ].map(({ id, label, icon: Icon }) => (
             <button
@@ -863,6 +916,32 @@ export default function VolleyballLeagueApp() {
                   })}
                 </div>
               ))
+            )}
+          </div>
+        )}
+
+        {tab === "ogloszenia" && (
+          <div>
+            {announcements.length === 0 ? (
+              <EmptyState icon={Megaphone} text="Brak ogłoszeń. Dodaj ogłoszenie w panelu Admin." />
+            ) : (
+              announcements
+                .slice()
+                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+                .map((a) => (
+                  <div key={a.id} style={{
+                    background: "#fff", border: "1px solid var(--line)", borderLeft: "3px solid var(--oak)",
+                    borderRadius: "var(--radius-sm)", padding: "14px 16px", marginBottom: 10, boxShadow: "var(--shadow-sm)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+                      <div style={{ fontWeight: 700, fontSize: 16 }}>{a.title}</div>
+                      <div style={{ fontSize: 11, color: "var(--grey)", whiteSpace: "nowrap" }}>{formatDateTime(a.createdAt)}</div>
+                    </div>
+                    {a.body && (
+                      <div style={{ fontSize: 14, color: "var(--navy)", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{a.body}</div>
+                    )}
+                  </div>
+                ))
             )}
           </div>
         )}
@@ -1048,6 +1127,70 @@ export default function VolleyballLeagueApp() {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+            </Section>
+
+            {/* Announcements management */}
+            <Section title="Ogłoszenia" defaultOpen>
+              <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 12 }}>
+                Ogłoszenia widoczne są dla wszystkich odwiedzających w zakładce „Ogłoszenia”, najnowsze na górze.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16, background: "#fff", border: "1px solid var(--line)", borderRadius: "var(--radius-sm)", padding: 12 }}>
+                <input className="vb-input" placeholder="Tytuł ogłoszenia" value={newAnnouncementTitle}
+                  onChange={(e) => setNewAnnouncementTitle(e.target.value)} />
+                <textarea className="vb-input" placeholder="Treść ogłoszenia (opcjonalnie)" value={newAnnouncementBody}
+                  onChange={(e) => setNewAnnouncementBody(e.target.value)}
+                  rows={3} style={{ resize: "vertical", fontFamily: "'IBM Plex Sans', sans-serif" }} />
+                <button className="vb-btn" style={{ background: "var(--oak)", color: "#fff", display: "flex", alignItems: "center", gap: 4, alignSelf: "flex-start" }} onClick={addAnnouncement}>
+                  <Plus size={15} /> Opublikuj ogłoszenie
+                </button>
+              </div>
+
+              {announcements.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--grey)" }}>Brak ogłoszeń.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {announcements
+                    .slice()
+                    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+                    .map((a) => (
+                      <div key={a.id} style={{
+                        background: "#fff", border: "1px solid var(--line)", borderRadius: "var(--radius-sm)", padding: "10px 12px",
+                      }}>
+                        {editingAnnouncementId === a.id ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <input className="vb-input" value={a.title}
+                              onChange={(e) => updateAnnouncementField(a.id, "title", e.target.value)} />
+                            <textarea className="vb-input" value={a.body}
+                              onChange={(e) => updateAnnouncementField(a.id, "body", e.target.value)}
+                              rows={3} style={{ resize: "vertical", fontFamily: "'IBM Plex Sans', sans-serif" }} />
+                            <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 4 }}
+                              onClick={() => setEditingAnnouncementId(null)}>
+                              <Check size={14} /> Gotowe
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                                <div style={{ fontWeight: 700, fontSize: 14 }}>{a.title}</div>
+                                <div style={{ fontSize: 11, color: "var(--grey)" }}>{formatDateTime(a.createdAt)}</div>
+                              </div>
+                              {a.body && <div style={{ fontSize: 13, color: "var(--grey)", marginTop: 2, whiteSpace: "pre-wrap" }}>{a.body}</div>}
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                              <button onClick={() => setEditingAnnouncementId(a.id)} title="Edytuj" style={{ background: "none", border: "1px solid #C9C2B3", borderRadius: 8, cursor: "pointer", color: "var(--navy)", display: "flex", alignItems: "center", padding: "4px 7px" }}>
+                                <Pencil size={13} />
+                              </button>
+                              <button onClick={() => deleteAnnouncement(a.id)} title="Usuń" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                 </div>
               )}
             </Section>
