@@ -1697,6 +1697,7 @@ function MatchProtocol({ match, teams, seasonName, onClose }) {
         boxShadow: "0 6px 24px rgba(0,0,0,0.25)", fontFamily: "'IBM Plex Sans', sans-serif", color: "var(--navy)",
       }}>
         <div style={{ textAlign: "center", marginBottom: 18, borderBottom: "2px solid var(--navy)", paddingBottom: 14 }}>
+          <img src={LOGO_DATA_URI} alt="Towarzystwo Sportowe w Wągrowcu" style={{ width: 56, height: 56, marginBottom: 8 }} />
           <div className="vb-display" style={{ fontSize: 24, letterSpacing: "0.03em" }}>PROTOKÓŁ MECZOWY</div>
           <div style={{ fontSize: 13, color: "var(--grey)", marginTop: 2 }}>Liga Siatkówki{seasonName ? ` — sezon ${seasonName}` : ""}</div>
           <div style={{ fontSize: 11, color: "var(--grey)", marginTop: 4 }}>Nr protokołu: {protocolNo}</div>
