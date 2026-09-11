@@ -31,9 +31,17 @@ const FONT_STYLE = `
 .vb-root ::-webkit-scrollbar-track { background: transparent; }
 .vb-root ::-webkit-scrollbar-thumb { background: #C9C2B3; border-radius: 8px; }
 
-.vb-tab { border-bottom: 3px solid transparent; transition: border-color 0.18s ease, color 0.18s ease, opacity 0.18s ease; opacity: 0.72; }
-.vb-tab.active { border-color: var(--amber); color: var(--amber); opacity: 1; }
-.vb-tab:hover:not(.active) { opacity: 1; }
+.vb-tab {
+  background: rgba(242, 239, 233, 0.06);
+  border: 1px solid rgba(242, 239, 233, 0.16);
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+}
+.vb-tab:hover:not(.active) { background: rgba(242, 239, 233, 0.13); border-color: rgba(242, 239, 233, 0.3); transform: translateY(-1px); }
+.vb-tab.active {
+  background: var(--oak);
+  border-color: var(--oak-dark);
+  box-shadow: 0 4px 12px rgba(201, 154, 91, 0.4);
+}
 
 .vb-input {
   background: #fff;
@@ -96,8 +104,8 @@ const FONT_STYLE = `
   border-radius: 50%; box-shadow: 0 0 0 2px rgba(240, 169, 59, 0.35), var(--shadow-sm);
 }
 .vb-title { color: var(--amber); font-size: clamp(22px, 6.5vw, 34px); line-height: 1; }
-.vb-tabs { display: flex; gap: clamp(14px, 4vw, 28px); overflow-x: auto; -webkit-overflow-scrolling: touch; border-top: 1px solid rgba(242, 239, 233, 0.08); max-width: 920px; margin-left: auto; margin-right: auto; }
-.vb-tab-btn { background: none; display: flex; align-items: center; gap: 7px; padding: 10px 2px 11px 2px; font-size: clamp(12px, 3.2vw, 14px); font-weight: 600; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; white-space: nowrap; }
+.vb-tabs { display: flex; gap: clamp(8px, 2.5vw, 12px); overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 6px 0 16px 0; max-width: 920px; margin-left: auto; margin-right: auto; }
+.vb-tab-btn { display: flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: 999px; font-size: clamp(12px, 3.2vw, 14px); font-weight: 600; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; white-space: nowrap; }
 .vb-content { padding: clamp(14px, 4vw, 26px); max-width: 920px; margin: 0 auto; }
 
 .vb-match-card {
@@ -125,8 +133,8 @@ const FONT_STYLE = `
 .vb-standings-table tbody tr:hover { background-color: #F5F0E4 !important; }
 
 @media (max-width: 480px) {
-  .vb-tabs { gap: 6px; }
-  .vb-tab-btn { font-size: 11.5px; gap: 4px; padding: 8px 1px 9px 1px; }
+  .vb-tabs { gap: 6px; padding: 4px 0 12px 0; }
+  .vb-tab-btn { font-size: 11.5px; gap: 4px; padding: 7px 11px; }
   .vb-match-card { flex-direction: column; align-items: stretch; gap: 8px; }
   .vb-match-info { flex-direction: column; align-items: flex-start; gap: 6px; flex: none; }
   .vb-match-actions { width: 100%; justify-content: space-between; }
@@ -802,7 +810,7 @@ export default function VolleyballLeagueApp() {
               key={id}
               onClick={() => setTab(id)}
               className={`vb-tab vb-tab-btn ${tab === id ? "active" : ""}`}
-              style={{ color: tab === id ? "var(--amber)" : "var(--chalk)" }}
+              style={{ color: tab === id ? "var(--navy-3)" : "var(--chalk)" }}
             >
               <Icon size={15} />
               {label}
@@ -1406,7 +1414,15 @@ export default function VolleyballLeagueApp() {
                           )}
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <div style={{ display: "flex", gap: 6 }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2, marginRight: 2 }}>
+                              <span style={{ fontSize: 11, color: "var(--navy)", fontWeight: 600, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={teamName(m.homeId)}>
+                                {teamName(m.homeId)}
+                              </span>
+                              <span style={{ fontSize: 11, color: "var(--navy)", fontWeight: 600, maxWidth: 72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={teamName(m.awayId)}>
+                                {teamName(m.awayId)}
+                              </span>
+                            </div>
                             {sets.map((s, i) => {
                               const invalid = setInvalid(s);
                               return (
