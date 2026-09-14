@@ -507,6 +507,141 @@ function advanceBracket(allMatches) {
   return allMatches.map((m) => ({ ...m }));
 }
 
+// ---- SYSTEM PUCHAROWY (pełna klasyfikacja miejsc, dla 8/12/16/24 drużyn) ----
+// W odróżnieniu od zwykłej drabinki eliminacyjnej (system brazylijski powyżej),
+// tu każdy przegrany gra dalej w drabince „pocieszenia", aż rozegrane zostaną
+// wszystkie miejsca. Szablony par meczów poniżej odwzorowują dokładnie kolejność
+// i skład par z ustalonych schematów dla 8, 12, 16 i 24 drużyn: „R{n}" oznacza
+// drużynę rozstawioną pod numerem n (wylosowaną), „Z{n}" zwycięzcę meczu nr n,
+// a „P{n}" przegranego meczu nr n. Ostatni mecz szablonu to zawsze finał
+// (I/II miejsce), a przedostatni — mecz o 3. miejsce (III/IV miejsce).
+const CUP_TEMPLATES = {
+  8: [
+    ["R1", "R8"], ["R6", "R3"], ["R4", "R5"], ["R7", "R2"],
+    ["Z1", "Z2"], ["Z3", "Z4"],
+    ["P1", "P2"], ["P3", "P4"],
+    ["P6", "Z7"], ["Z8", "P5"],
+    ["Z5", "Z9"], ["Z6", "Z10"],
+    ["P11", "P12"],
+    ["Z11", "Z12"],
+  ],
+  12: [
+    ["R8", "R9"], ["R5", "R12"], ["R6", "R11"], ["R7", "R10"],
+    ["R1", "Z1"], ["Z2", "R4"], ["R3", "Z3"], ["Z4", "R2"],
+    ["P4", "P5"], ["P3", "P6"], ["P2", "P7"], ["P1", "P8"],
+    ["Z5", "Z6"], ["Z7", "Z8"],
+    ["Z12", "Z11"], ["Z10", "Z9"],
+    ["P14", "Z15"], ["P13", "Z16"],
+    ["Z13", "Z17"], ["Z14", "Z18"],
+    ["P19", "P20"],
+    ["Z19", "Z20"],
+  ],
+  16: [
+    ["R1", "R16"], ["R9", "R8"], ["R5", "R12"], ["R13", "R4"],
+    ["R3", "R14"], ["R11", "R6"], ["R7", "R10"], ["R15", "R2"],
+    ["Z1", "Z2"], ["Z3", "Z4"], ["Z5", "Z6"], ["Z7", "Z8"],
+    ["P8", "P7"], ["P6", "P5"], ["P4", "P3"], ["P2", "P1"],
+    ["Z13", "P9"], ["Z14", "P10"], ["Z15", "P11"], ["Z16", "P12"],
+    ["Z9", "Z10"], ["Z11", "Z12"],
+    ["Z17", "Z18"], ["Z19", "Z20"],
+    ["P22", "Z23"], ["P21", "Z24"],
+    ["Z21", "Z25"], ["Z22", "Z26"],
+    ["P27", "P28"],
+    ["Z27", "Z28"],
+  ],
+  24: [
+    ["R17", "R16"], ["R9", "R24"], ["R21", "R12"], ["R13", "R20"],
+    ["R19", "R14"], ["R11", "R22"], ["R23", "R10"], ["R15", "R18"],
+    ["R1", "Z1"], ["Z2", "R8"], ["R5", "Z3"], ["Z4", "R4"],
+    ["R3", "Z5"], ["Z6", "R6"], ["R7", "Z7"], ["Z8", "R2"],
+    ["P8", "P9"], ["P10", "P7"], ["P6", "P11"], ["P12", "P5"],
+    ["P4", "P13"], ["P14", "P3"], ["P2", "P15"], ["P16", "P1"],
+    ["Z9", "Z10"], ["Z11", "Z12"], ["Z13", "Z14"], ["Z15", "Z16"],
+    ["Z23", "Z24"], ["Z22", "Z21"], ["Z20", "Z19"], ["Z17", "Z18"],
+    ["Z29", "P23"], ["Z30", "P26"], ["Z31", "P27"], ["Z32", "P28"],
+    ["Z25", "Z26"], ["Z27", "Z28"],
+    ["Z33", "Z34"], ["Z35", "Z36"],
+    ["P38", "Z39"], ["Z40", "P37"],
+    ["Z37", "Z41"], ["Z38", "Z42"],
+    ["P43", "P44"],
+    ["Z43", "Z44"],
+  ],
+};
+
+function parseCupRef(str) {
+  const m = /^([RZP])(\d+)$/.exec(str || "");
+  if (!m) return null;
+  const kind = m[1] === "R" ? "seed" : m[1] === "Z" ? "win" : "lose";
+  return { kind, n: Number(m[2]) };
+}
+
+// Głębokość meczu = ile rund trzeba rozegrać, zanim para na niego zależna jest
+// gotowa (0 = obie strony to bezpośrednio rozstawienie R{n}). Używana wyłącznie
+// do pogrupowania meczów w kolumny/rundy w widoku drabinki.
+function cupMatchDepth(template, num, memo) {
+  if (memo.has(num)) return memo.get(num);
+  memo.set(num, 0); // zabezpieczenie przed pętlą
+  const [h, a] = template[num - 1];
+  let depth = 0;
+  for (const ref of [parseCupRef(h), parseCupRef(a)]) {
+    if (ref && ref.kind !== "seed") {
+      depth = Math.max(depth, 1 + cupMatchDepth(template, ref.n, memo));
+    }
+  }
+  memo.set(num, depth);
+  return depth;
+}
+
+function cupStageLabel(num, template, depth) {
+  if (num === template.length) return "Finał";
+  if (num === template.length - 1) return "Mecz o 3. miejsce";
+  return `Runda ${depth + 1}`;
+}
+
+// Buduje pełną drabinkę systemu pucharowego (z pełną klasyfikacją miejsc) dla
+// zadanego rozmiaru (8/12/16/24) na podstawie stałych szablonów par meczów
+// powyżej. Zwraca listę meczów zgodną strukturalnie z drabinką eliminacyjną
+// (pole `bracket`), dzięki czemu automatyczny awans (advanceBracket) działa
+// identycznie jak w turnieju jednodniowym — wystarczy wpisać wynik.
+function generateCupMatches(size, seedTeamIds) {
+  const template = CUP_TEMPLATES[size];
+  if (!template) return [];
+  const bySeed = [...seedTeamIds];
+  while (bySeed.length < size) bySeed.push(null);
+
+  const depthMemo = new Map();
+  const matches = template.map((_, idx) => {
+    const num = idx + 1;
+    const depth = cupMatchDepth(template, num, depthMemo);
+    return {
+      id: uid(), round: cupStageLabel(num, template, depth), date: "", time: "", venue: "",
+      homeId: null, awayId: null, sets: [],
+      bracket: { roundIndex: depth, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null },
+    };
+  });
+  const byNum = {};
+  matches.forEach((m, idx) => { byNum[idx + 1] = m; });
+
+  template.forEach(([h, a], idx) => {
+    const m = byNum[idx + 1];
+    [["home", h], ["away", a]].forEach(([slot, ref]) => {
+      const parsed = parseCupRef(ref);
+      if (!parsed) return;
+      if (parsed.kind === "seed") {
+        m[slot === "home" ? "homeId" : "awayId"] = bySeed[parsed.n - 1] ?? null;
+      } else if (parsed.kind === "win") {
+        const src = byNum[parsed.n];
+        if (src) { src.bracket.nextMatchId = m.id; src.bracket.nextSlot = slot; }
+      } else if (parsed.kind === "lose") {
+        const src = byNum[parsed.n];
+        if (src) { src.bracket.loserNextMatchId = m.id; src.bracket.loserNextSlot = slot; }
+      }
+    });
+  });
+
+  return matches;
+}
+
 export default function VolleyballLeagueApp() {
   const [tab, setTab] = useState("tabela");
   const [selectedRound, setSelectedRound] = useState("all");
@@ -529,6 +664,7 @@ export default function VolleyballLeagueApp() {
   const [copySeasonSource, setCopySeasonSource] = useState("");
   const [seedOrder, setSeedOrder] = useState(null);
   const [bracketError, setBracketError] = useState("");
+  const [cupSize, setCupSize] = useState(8);
   const [seasonError, setSeasonError] = useState("");
   const [confirmDeleteSeasonId, setConfirmDeleteSeasonId] = useState(null);
 
@@ -830,6 +966,17 @@ export default function VolleyballLeagueApp() {
     saveMatches(advanceBracket(generateBracketMatches(order)));
   }
 
+  function handleGenerateCup() {
+    setBracketError("");
+    const order = seedOrder && seedOrder.length === teams.length ? seedOrder : teams.map((t) => t.id);
+    if (order.length < 2) { setBracketError("Potrzebujesz co najmniej 2 drużyn."); return; }
+    if (order.length > cupSize) {
+      setBracketError(`Zgłoszono ${order.length} drużyn — to więcej niż miejsc w wybranej drabince (${cupSize}). Wybierz większy rozmiar.`);
+      return;
+    }
+    saveMatches(advanceBracket(generateCupMatches(cupSize, order)));
+  }
+
   function addDateRow() {
     setDateRows([...dateRows, { id: uid(), date: "", slots: [{ id: uid(), time: "", venue: venues[0]?.name || "" }] }]);
   }
@@ -930,10 +1077,12 @@ export default function VolleyballLeagueApp() {
   const teamName = (id) => teams.find((t) => t.id === id)?.name || "?";
   const currentSeasonObj = seasons.find((s) => s.id === selectedSeasonId) || null;
   const isTournament = currentSeasonObj?.type === "turniej";
+  const isCup = currentSeasonObj?.type === "puchar";
+  const isBracket = isTournament || isCup;
   const standings = computeStandings(teams, matches);
   const venueConflicts = findVenueConflicts(matches);
   const rounds = [...new Set(matches.map((m) => m.round))].sort((a, b) => {
-    if (isTournament) return 0; // kolejność drabinki = kolejność generowania rund
+    if (isBracket) return 0; // kolejność drabinki = kolejność generowania rund
     return Number(a) - Number(b);
   });
   const activeRound = rounds.find((r) => matches.some((m) => m.round === r && !matchOutcome(m).played));
@@ -1010,7 +1159,7 @@ export default function VolleyballLeagueApp() {
           </div>
         )}
 
-        {tab === "tabela" && isTournament && (
+        {tab === "tabela" && isBracket && (
           <div>
             {matches.length === 0 ? (
               <EmptyState icon={Trophy} text="Brak wygenerowanej drabinki. Wygeneruj ją w panelu Admin." />
@@ -1056,9 +1205,15 @@ export default function VolleyballLeagueApp() {
                       <div className="vb-display" style={{ fontSize: 22, color: "var(--navy)" }}>
                         🏆 Mistrz turnieju: {teamName(finalOutcome.winner)}
                       </div>
+                      {finalOutcome.loser && (
+                        <div style={{ fontSize: 13, color: "var(--grey)", marginTop: 2 }}>
+                          II miejsce: {teamName(finalOutcome.loser)}
+                        </div>
+                      )}
                       {bronzeOutcome?.played && (
                         <div style={{ fontSize: 13, color: "var(--grey)", marginTop: 4 }}>
                           III miejsce: {teamName(bronzeOutcome.winner)}
+                          {bronzeOutcome.loser && <>{" · "}IV miejsce: {teamName(bronzeOutcome.loser)}</>}
                         </div>
                       )}
                     </div>
@@ -1069,7 +1224,7 @@ export default function VolleyballLeagueApp() {
           </div>
         )}
 
-        {tab === "tabela" && !isTournament && (
+        {tab === "tabela" && !isBracket && (
           <div>
             {standings.length === 0 ? (
               <EmptyState icon={Trophy} text="Brak drużyn. Dodaj drużyny w panelu Admin, żeby zobaczyć tabelę." />
@@ -1118,7 +1273,7 @@ export default function VolleyballLeagueApp() {
             {matches.length > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13, color: "var(--grey)" }}>{isTournament ? "Runda" : "Kolejka"}</span>
+                  <span style={{ fontSize: 13, color: "var(--grey)" }}>{isBracket ? "Runda" : "Kolejka"}</span>
                   <select
                     className="vb-input"
                     value={selectedRound}
@@ -1127,7 +1282,7 @@ export default function VolleyballLeagueApp() {
                   >
                     <option value="all">Wszystkie</option>
                     {rounds.map((r) => (
-                      <option key={r} value={r}>{isTournament ? r : `Kolejka ${r}`}{r === activeRound ? " (bieżąca)" : ""}</option>
+                      <option key={r} value={r}>{isBracket ? r : `Kolejka ${r}`}{r === activeRound ? " (bieżąca)" : ""}</option>
                     ))}
                   </select>
                 </div>
@@ -1146,7 +1301,7 @@ export default function VolleyballLeagueApp() {
                 .map((round) => (
                 <div key={round} style={{ marginBottom: 22 }}>
                   <div className="vb-display" style={{ fontSize: 18, color: "var(--oak)", marginBottom: 8 }}>
-                    {isTournament ? round : `KOLEJKA ${round}`}
+                    {isBracket ? round : `KOLEJKA ${round}`}
                   </div>
                   {matches
                     .filter((m) => m.round === round)
@@ -1288,7 +1443,7 @@ export default function VolleyballLeagueApp() {
                     <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 100 }}>
                       {s.name}
                       <span style={{ fontWeight: 400, color: "var(--grey)", fontSize: 11 }}>
-                        {" · "}{s.type === "turniej" ? "Turniej jednodniowy" : "Liga"}
+                        {" · "}{s.type === "turniej" ? "Turniej jednodniowy" : s.type === "puchar" ? "Puchar (pełny system miejsc)" : "Liga"}
                       </span>
                     </span>
                     {s.id === currentSeasonId && (
@@ -1339,6 +1494,10 @@ export default function VolleyballLeagueApp() {
                     <input type="radio" checked={newSeasonType === "turniej"} onChange={() => setNewSeasonType("turniej")} />
                     Turniej jednodniowy (drabinka pucharowa)
                   </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                    <input type="radio" checked={newSeasonType === "puchar"} onChange={() => setNewSeasonType("puchar")} />
+                    Puchar (pełny system miejsc — 8/12/16/24 drużyn)
+                  </label>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <input className="vb-input" placeholder="Nazwa sezonu, np. 2027/2028" value={newSeasonName}
@@ -1372,7 +1531,7 @@ export default function VolleyballLeagueApp() {
                 <div style={{ fontSize: 13, color: "var(--grey)" }}>Brak meczów.</div>
               ) : (
                 rounds.map((round) => (
-                  <Section key={round} title={isTournament ? round : `Kolejka ${round}`} defaultOpen={round === activeRound} compact>
+                  <Section key={round} title={isBracket ? round : `Kolejka ${round}`} defaultOpen={round === activeRound} compact>
                     {matches
                       .filter((m) => m.round === round)
                       .slice()
@@ -1389,7 +1548,7 @@ export default function VolleyballLeagueApp() {
                       }}>
                         <div style={{ minWidth: "min(260px, 100%)", flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 6 }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                            {isTournament ? (
+                            {isBracket ? (
                               <span style={{ fontSize: 11, color: "var(--grey)" }}>{m.round}</span>
                             ) : (
                               <>
@@ -1411,7 +1570,7 @@ export default function VolleyballLeagueApp() {
                               )}
                             </select>
                           </div>
-                          {isTournament ? (
+                          {isBracket ? (
                             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                               <span style={{ fontWeight: 600, fontSize: 13 }}>{m.homeId ? teamName(m.homeId) : "Wolny los / TBA"}</span>
                               <span style={{ color: "var(--grey)", fontSize: 12 }}>vs</span>
@@ -1430,7 +1589,7 @@ export default function VolleyballLeagueApp() {
                               </select>
                             </div>
                           )}
-                          {!isTournament && m.homeId === m.awayId && (
+                          {!isBracket && m.homeId === m.awayId && (
                             <div style={{ fontSize: 11, color: "var(--rust)" }}>Wybierz dwie różne drużyny.</div>
                           )}
                           {hasConflict && (
@@ -1439,7 +1598,7 @@ export default function VolleyballLeagueApp() {
                             </div>
                           )}
                         </div>
-                        {isTournament && (!m.homeId || !m.awayId) ? (
+                        {isBracket && (!m.homeId || !m.awayId) ? (
                           <div style={{ fontSize: 12, color: "var(--grey)", fontStyle: "italic", minWidth: 140 }}>
                             {!m.homeId && !m.awayId ? "Oczekuje na wyniki poprzedniej rundy" : "Wolny los — awans automatyczny"}
                           </div>
@@ -1474,7 +1633,7 @@ export default function VolleyballLeagueApp() {
                           </div>
                         )}
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          {isTournament && (!m.homeId || !m.awayId) ? (
+                          {isBracket && (!m.homeId || !m.awayId) ? (
                             m.homeId || m.awayId ? (
                               <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--oak)", fontSize: 12 }}>
                                 <Check size={14} /> wolny los
@@ -1632,7 +1791,7 @@ export default function VolleyballLeagueApp() {
             </Section>
 
             {/* Auto schedule generator (tylko liga) */}
-            {!isTournament && (
+            {!isBracket && (
             <Section title="Generator terminarza (automatyczny)">
               <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 12 }}>
                 Wygeneruje mecze każdy z każdym i rozłoży je na podane terminy — dla każdej daty określ godziny i wybierz halę z listy zdefiniowanej w sekcji „Hale”. Żadna drużyna nie zagra dwa razy tego samego dnia.
@@ -1775,6 +1934,62 @@ export default function VolleyballLeagueApp() {
                     )}
                     <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }} onClick={handleGenerateBracket}>
                       <Wand2 size={15} /> Wygeneruj drabinkę
+                    </button>
+                  </>
+                )}
+              </Section>
+            )}
+
+            {/* Bracket generator (tylko system pucharowy) */}
+            {isCup && (
+              <Section title="Generator drabinki pucharowej (pełny system miejsc)" defaultOpen>
+                <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 12 }}>
+                  W tym systemie zgłoszone drużyny są losowane i otrzymują numery R1, R2, itd. (R1 = najsilniejsza).
+                  Każdy przegrany gra dalej w drabince „pocieszenia", aż rozegrane zostaną wszystkie miejsca — nie tylko
+                  zwycięzca. Po wpisaniu wyniku meczu drużyny automatycznie awansują dalej zgodnie ze schematem. Finał
+                  wyłania I i II miejsce, a przedostatni mecz — III i IV miejsce. Wybierz rozmiar drabinki dopasowany do
+                  liczby zgłoszonych drużyn (8, 12, 16 lub 24) — jeśli zgłoszonych drużyn jest mniej, brakujące miejsca
+                  (najniżej rozstawione) otrzymają wolny los.
+                </div>
+                {teams.length < 2 ? (
+                  <div style={{ fontSize: 13, color: "var(--rust)" }}>Dodaj co najmniej 2 drużyny, żeby wygenerować drabinkę.</div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                      <span style={{ fontSize: 13, color: "var(--grey)" }}>Rozmiar drabinki:</span>
+                      <select className="vb-input" value={cupSize} onChange={(e) => setCupSize(Number(e.target.value))} style={{ padding: "5px 10px" }}>
+                        {[8, 12, 16, 24].map((sz) => <option key={sz} value={sz}>{sz} drużyn</option>)}
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14, maxWidth: 360 }}>
+                      {(seedOrder && seedOrder.length === teams.length ? seedOrder : teams.map((t) => t.id)).map((id, idx, arr) => (
+                        <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #DFD8C8", borderRadius: 8, padding: "6px 10px" }}>
+                          <span className="vb-display" style={{ fontSize: 15, color: "var(--oak)", width: 32 }}>R{idx + 1}</span>
+                          <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{teamName(id)}</span>
+                          <button onClick={() => moveSeed(idx, -1)} disabled={idx === 0} style={{
+                            background: "none", border: "1px solid #C9C2B3", borderRadius: 6, padding: "2px 7px",
+                            cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.4 : 1,
+                          }}>↑</button>
+                          <button onClick={() => moveSeed(idx, 1)} disabled={idx === arr.length - 1} style={{
+                            background: "none", border: "1px solid #C9C2B3", borderRadius: 6, padding: "2px 7px",
+                            cursor: idx === arr.length - 1 ? "default" : "pointer", opacity: idx === arr.length - 1 ? 0.4 : 1,
+                          }}>↓</button>
+                        </div>
+                      ))}
+                    </div>
+                    {teams.length > cupSize && (
+                      <div style={{ color: "var(--rust)", fontSize: 13, marginBottom: 8 }}>
+                        Zgłoszono {teams.length} drużyn — to więcej niż miejsc w drabince na {cupSize}. Wybierz większy rozmiar.
+                      </div>
+                    )}
+                    {bracketError && <div style={{ color: "var(--rust)", fontSize: 13, marginBottom: 8 }}>{bracketError}</div>}
+                    {matches.length > 0 && (
+                      <div style={{ fontSize: 13, color: "var(--rust)", marginBottom: 8 }}>
+                        Uwaga: to zastąpi obecną drabinkę ({matches.length} meczów) — wpisane wyniki zostaną utracone.
+                      </div>
+                    )}
+                    <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }} onClick={handleGenerateCup}>
+                      <Wand2 size={15} /> Wygeneruj drabinkę pucharową
                     </button>
                   </>
                 )}
