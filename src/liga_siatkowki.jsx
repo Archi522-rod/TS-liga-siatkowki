@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Trophy, CalendarDays, Lock, Plus, Trash2, ShieldCheck, X, Check, KeyRound, Wand2, AlertTriangle, Copy, Printer, ChevronDown, ChevronRight, Megaphone, Pencil } from "lucide-react";
 import { storage, adminAuth } from "./lib/storage";
 
@@ -642,6 +642,159 @@ function generateCupMatches(size, seedTeamIds) {
   return matches;
 }
 
+// ---- GRAF DRABINKI (widok wizualny z liniami łączącymi mecze) ----
+// Oblicza pozycję (kolumna, wiersz) każdego meczu na podstawie jego głębokości
+// w drabince (bracket.roundIndex -> kolumna) oraz meczów, które do niego
+// prowadzą (bracket.nextMatchId / loserNextMatchId -> pozycja pionowa liczona
+// jako średnia pozycji meczów źródłowych, tak żeby linie naturalnie zbiegały
+// się w stronę finału i meczu o 3. miejsce).
+const BG_BOX_W = 190;
+const BG_BOX_H = 56;
+const BG_COL_GAP = 60;
+const BG_ROW_H = 76;
+
+function computeBracketGraphLayout(matches) {
+  const depthOf = (m) => m.bracket?.roundIndex ?? 0;
+  const orderIndex = {};
+  matches.forEach((m, i) => { orderIndex[m.id] = i; });
+
+  const sourcesOf = {};
+  matches.forEach((m) => { sourcesOf[m.id] = []; });
+  matches.forEach((m) => {
+    const b = m.bracket;
+    if (!b) return;
+    if (b.nextMatchId && sourcesOf[b.nextMatchId]) sourcesOf[b.nextMatchId].push(m.id);
+    if (b.loserNextMatchId && sourcesOf[b.loserNextMatchId]) sourcesOf[b.loserNextMatchId].push(m.id);
+  });
+
+  const yMemo = {};
+  function rawY(id) {
+    if (yMemo[id] !== undefined) return yMemo[id];
+    yMemo[id] = orderIndex[id]; // zabezpieczenie przed pętlą
+    const srcs = sourcesOf[id];
+    const val = srcs.length
+      ? srcs.reduce((sum, s) => sum + rawY(s), 0) / srcs.length
+      : orderIndex[id];
+    yMemo[id] = val;
+    return val;
+  }
+  matches.forEach((m) => rawY(m.id));
+
+  const cols = [...new Set(matches.map(depthOf))].sort((a, b) => a - b);
+  const rowOf = {};
+  const colCount = {};
+  cols.forEach((c) => {
+    const colMatches = matches.filter((m) => depthOf(m) === c);
+    colMatches.sort((a, b) => (yMemo[a.id] - yMemo[b.id]) || (orderIndex[a.id] - orderIndex[b.id]));
+    colMatches.forEach((m, idx) => { rowOf[m.id] = idx; });
+    colCount[c] = colMatches.length;
+  });
+  const maxRows = Math.max(1, ...Object.values(colCount));
+
+  const pos = {};
+  matches.forEach((m) => {
+    const c = depthOf(m);
+    const colIdx = cols.indexOf(c);
+    const offsetY = ((maxRows - colCount[c]) * BG_ROW_H) / 2;
+    pos[m.id] = { x: colIdx * (BG_BOX_W + BG_COL_GAP), y: offsetY + rowOf[m.id] * BG_ROW_H };
+  });
+
+  return {
+    pos,
+    width: cols.length * BG_BOX_W + Math.max(0, cols.length - 1) * BG_COL_GAP,
+    height: maxRows * BG_ROW_H,
+  };
+}
+
+function BracketGraph({ matches, teamName, bracketMatchOutcome, matchOutcome }) {
+  const { pos, width, height } = useMemo(() => computeBracketGraphLayout(matches), [matches]);
+  const PAD = 16;
+
+  const edges = [];
+  matches.forEach((m) => {
+    const b = m.bracket;
+    if (!b || !pos[m.id]) return;
+    const from = pos[m.id];
+    const addEdge = (targetId, targetSlot, kind) => {
+      const to = pos[targetId];
+      if (!to) return;
+      const yShift = targetSlot === "home" ? -BG_BOX_H / 4 : targetSlot === "away" ? BG_BOX_H / 4 : 0;
+      edges.push({
+        x1: from.x + BG_BOX_W, y1: from.y + BG_BOX_H / 2,
+        x2: to.x, y2: to.y + BG_BOX_H / 2 + yShift,
+        kind,
+      });
+    };
+    if (b.nextMatchId) addEdge(b.nextMatchId, b.nextSlot, "win");
+    if (b.loserNextMatchId) addEdge(b.loserNextMatchId, b.loserNextSlot, "lose");
+  });
+
+  return (
+    <div style={{ overflow: "auto", paddingBottom: 12, border: "1px solid var(--line)", borderRadius: "var(--radius)", background: "#FBFAF6" }}>
+      <div style={{ position: "relative", width: width + PAD * 2, height: height + PAD * 2 }}>
+        <svg width={width + PAD * 2} height={height + PAD * 2} style={{ position: "absolute", top: 0, left: 0, pointerEvents: "none" }}>
+          {edges.map((e, i) => {
+            const x1 = e.x1 + PAD, y1 = e.y1 + PAD, x2 = e.x2 + PAD, y2 = e.y2 + PAD;
+            const mx = x1 + (x2 - x1) / 2;
+            return (
+              <path
+                key={i}
+                d={`M ${x1} ${y1} H ${mx} V ${y2} H ${x2}`}
+                fill="none"
+                stroke={e.kind === "win" ? "var(--oak)" : "#C9C2B3"}
+                strokeWidth={e.kind === "win" ? 2 : 1.5}
+                strokeDasharray={e.kind === "lose" ? "4 4" : undefined}
+              />
+            );
+          })}
+        </svg>
+        {matches.map((m) => {
+          const p = pos[m.id];
+          if (!p) return null;
+          const o = matchOutcome(m);
+          const bo = bracketMatchOutcome(m);
+          const isFinal = m.round === "Finał";
+          const isBronze = m.round === "Mecz o 3. miejsce";
+          return (
+            <div key={m.id} style={{ position: "absolute", left: p.x + PAD, top: p.y + PAD, width: BG_BOX_W }}>
+              <div className="vb-display" style={{
+                fontSize: 11, color: isFinal ? "var(--oak-dark)" : "var(--grey)", textAlign: "center",
+                marginBottom: 3, letterSpacing: "0.03em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>
+                {m.round}
+              </div>
+              <div style={{
+                background: "#fff", border: `1px solid ${isFinal ? "var(--oak)" : "var(--line)"}`,
+                borderLeft: `3px solid ${isFinal ? "var(--oak)" : isBronze ? "var(--rust)" : "var(--line)"}`,
+                borderRadius: 8, boxShadow: "var(--shadow-sm)", overflow: "hidden",
+              }}>
+                {["home", "away"].map((side) => {
+                  const teamId = side === "home" ? m.homeId : m.awayId;
+                  const isWinner = !!(bo.winner && bo.winner === teamId);
+                  const setsVal = side === "home" ? o.homeSets : o.awaySets;
+                  return (
+                    <div key={side} style={{
+                      display: "flex", justifyContent: "space-between", gap: 6, padding: "6px 9px",
+                      fontSize: 12.5, fontWeight: isWinner ? 700 : 400,
+                      borderBottom: side === "home" ? "1px solid var(--line)" : "none",
+                      background: isWinner ? "#FBF6EC" : "transparent",
+                    }}>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {teamId ? teamName(teamId) : "—"}
+                      </span>
+                      <span style={{ color: "var(--grey)", flexShrink: 0, marginLeft: 6 }}>{o.played ? setsVal : ""}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function VolleyballLeagueApp() {
   const [tab, setTab] = useState("tabela");
   const [selectedRound, setSelectedRound] = useState("all");
@@ -1165,34 +1318,21 @@ export default function VolleyballLeagueApp() {
               <EmptyState icon={Trophy} text="Brak wygenerowanej drabinki. Wygeneruj ją w panelu Admin." />
             ) : (
               <>
-                <div style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10 }}>
-                  {rounds.map((round) => (
-                    <div key={round} style={{ minWidth: 190, flex: "0 0 auto" }}>
-                      <div className="vb-display" style={{ fontSize: 15, color: "var(--oak)", marginBottom: 10, textAlign: "center" }}>
-                        {round}
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 30, justifyContent: "center", height: "100%" }}>
-                        {matches.filter((m) => m.round === round).map((m) => {
-                          const o = matchOutcome(m);
-                          const bo = bracketMatchOutcome(m);
-                          return (
-                            <div key={m.id} style={{
-                              background: "#fff", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", boxShadow: "var(--shadow-sm)",
-                            }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, fontWeight: bo.winner && bo.winner === m.homeId ? 700 : 400, padding: "2px 0" }}>
-                                <span>{m.homeId ? teamName(m.homeId) : "—"}</span>
-                                <span style={{ color: "var(--grey)" }}>{o.played ? o.homeSets : ""}</span>
-                              </div>
-                              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, fontWeight: bo.winner && bo.winner === m.awayId ? 700 : 400, padding: "2px 0" }}>
-                                <span>{m.awayId ? teamName(m.awayId) : "—"}</span>
-                                <span style={{ color: "var(--grey)" }}>{o.played ? o.awaySets : ""}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                <BracketGraph
+                  matches={matches}
+                  teamName={teamName}
+                  bracketMatchOutcome={bracketMatchOutcome}
+                  matchOutcome={matchOutcome}
+                />
+                <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, color: "var(--grey)", flexWrap: "wrap" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 18, height: 2, background: "var(--oak)", display: "inline-block" }}></span>
+                    ścieżka zwycięzcy
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 18, height: 0, borderTop: "1.5px dashed #C9C2B3", display: "inline-block" }}></span>
+                    ścieżka przegranego (walka o niższe miejsca)
+                  </span>
                 </div>
                 {(() => {
                   const finalMatch = matches.find((m) => m.round === "Finał");
