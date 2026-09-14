@@ -48,22 +48,70 @@ export const storage = {
   },
 };
 
-// Hasło administratora NIE przechodzi przez app_kv (patrz supabase-schema.sql) —
-// porównanie hasła dzieje się po stronie bazy przez funkcje RPC, więc hash
-// nigdy nie trafia do przeglądarki.
+// Hasła administratorów NIE przechodzą przez app_kv (patrz supabase-schema-admin-accounts.sql) —
+// logowanie/zarządzanie kontami dzieje się po stronie bazy przez funkcje RPC, więc
+// hash nigdy nie trafia do przeglądarki. Każde konto ma własny login i hasło;
+// zarządzanie kolejnymi kontami (dodawanie/usuwanie) wymaga podania danych już
+// zalogowanej osoby (actor), którą baza sama weryfikuje przy każdym wywołaniu.
 export const adminAuth = {
-  async passwordExists() {
-    const { data, error } = await supabase.rpc("admin_password_exists");
+  // Czy istnieje choć jedno konto admina (decyduje, czy pokazać ekran "utwórz pierwsze konto").
+  async accountsExist() {
+    const { data, error } = await supabase.rpc("admin_accounts_exist");
     if (error) throw error;
     return Boolean(data);
   },
-  async setPassword(password) {
-    const { error } = await supabase.rpc("set_admin_password", { new_password: password });
+  // Zakłada pierwsze konto — działa tylko dopóki tabela kont jest pusta.
+  async bootstrapAccount(username, password) {
+    const { error } = await supabase.rpc("bootstrap_admin_account", {
+      new_username: username,
+      new_password: password,
+    });
     if (error) throw error;
   },
-  async verifyPassword(password) {
-    const { data, error } = await supabase.rpc("verify_admin_password", { input_password: password });
+  // Sprawdza login + hasło przy wejściu do panelu.
+  async login(username, password) {
+    const { data, error } = await supabase.rpc("verify_admin_login", {
+      p_username: username,
+      p_password: password,
+    });
     if (error) throw error;
     return Boolean(data);
+  },
+  // Lista loginów (bez haseł) — wymaga podania danych już zalogowanej osoby.
+  async listAccounts(actorUsername, actorPassword) {
+    const { data, error } = await supabase.rpc("list_admin_accounts", {
+      actor_username: actorUsername,
+      actor_password: actorPassword,
+    });
+    if (error) throw error;
+    return data || [];
+  },
+  // Dodaje nowe konto administratora.
+  async addAccount(actorUsername, actorPassword, newUsername, newPassword) {
+    const { error } = await supabase.rpc("add_admin_account", {
+      actor_username: actorUsername,
+      actor_password: actorPassword,
+      new_username: newUsername,
+      new_password: newPassword,
+    });
+    if (error) throw error;
+  },
+  // Usuwa konto administratora (baza nie pozwoli usunąć ostatniego pozostałego).
+  async removeAccount(actorUsername, actorPassword, targetUsername) {
+    const { error } = await supabase.rpc("remove_admin_account", {
+      actor_username: actorUsername,
+      actor_password: actorPassword,
+      target_username: targetUsername,
+    });
+    if (error) throw error;
+  },
+  // Zmiana własnego hasła przez zalogowaną osobę.
+  async changePassword(actorUsername, actorPassword, newPassword) {
+    const { error } = await supabase.rpc("change_admin_password", {
+      actor_username: actorUsername,
+      actor_password: actorPassword,
+      new_password: newPassword,
+    });
+    if (error) throw error;
   },
 };
