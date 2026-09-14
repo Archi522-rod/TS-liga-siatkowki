@@ -152,6 +152,8 @@ const FONT_STYLE = `
   .vb-standings-table th:nth-child(6), .vb-standings-table td:nth-child(6),
   .vb-standings-table th:nth-child(7), .vb-standings-table td:nth-child(7) { width: 15%; white-space: nowrap; }
   .vb-standings-table th:nth-child(8), .vb-standings-table td:nth-child(8) { width: 15%; }
+  .vb-score-input { width: 30px; font-size: 15px; padding: 3px 0; }
+  .vb-sets-row { row-gap: 6px; }
 }
 @media print {
   #vb-app-content, .vb-no-print { display: none !important; }
@@ -217,7 +219,7 @@ function setInvalid(set) {
   return Math.abs(h - a) < 2;
 }
 
-function matchOutcome(match) {
+function matchOutcome(match, setsToWin = 3) {
   let homeSets = 0, awaySets = 0, homePts = 0, awayPts = 0;
   for (const s of match.sets || []) {
     const w = setWinner(s);
@@ -228,11 +230,11 @@ function matchOutcome(match) {
       awayPts += Number(s.away);
     }
   }
-  const played = homeSets >= 3 || awaySets >= 3;
+  const played = homeSets >= setsToWin || awaySets >= setsToWin;
   let winner = null, leaguePts = null;
   if (played) {
-    winner = homeSets >= 3 ? "home" : "away";
-    const tight = homeSets + awaySets === 5;
+    winner = homeSets >= setsToWin ? "home" : "away";
+    const tight = homeSets + awaySets === setsToWin * 2 - 1;
     leaguePts = tight
       ? { home: winner === "home" ? 2 : 1, away: winner === "away" ? 2 : 1 }
       : { home: winner === "home" ? 3 : 0, away: winner === "away" ? 3 : 0 };
@@ -458,13 +460,13 @@ function generateBracketMatches(seedTeamIds) {
 
 // Wynik meczu drabinki: jeśli jedna strona to wolny los (brak drużyny), mecz jest
 // automatycznie rozstrzygnięty bez rozgrywania.
-function bracketMatchOutcome(match) {
+function bracketMatchOutcome(match, setsToWin = 3) {
   const homeIsBye = !match.homeId;
   const awayIsBye = !match.awayId;
   if (homeIsBye && awayIsBye) return { played: false, winner: null, loser: null };
   if (homeIsBye) return { played: true, winner: match.awayId, loser: null, bye: true };
   if (awayIsBye) return { played: true, winner: match.homeId, loser: null, bye: true };
-  const o = matchOutcome(match);
+  const o = matchOutcome(match, setsToWin);
   if (!o.played) return { played: false, winner: null, loser: null };
   return {
     played: true,
@@ -476,7 +478,7 @@ function bracketMatchOutcome(match) {
 
 // Po każdej zmianie wyniku „przepycha" zwycięzców (i przegranych półfinałów do
 // meczu o 3. miejsce) do kolejnych rund drabinki.
-function advanceBracket(allMatches) {
+function advanceBracket(allMatches, setsToWin = 3) {
   const byId = {};
   for (const m of allMatches) byId[m.id] = m;
   let changed = true;
@@ -486,7 +488,7 @@ function advanceBracket(allMatches) {
     guard++;
     for (const m of allMatches) {
       if (!m.bracket) continue;
-      const o = bracketMatchOutcome(m);
+      const o = bracketMatchOutcome(m, setsToWin);
       if (!o.played) continue;
       if (m.bracket.nextMatchId) {
         const next = byId[m.bracket.nextMatchId];
@@ -526,6 +528,8 @@ export default function VolleyballLeagueApp() {
   const [selectedSeasonId, setSelectedSeasonId] = useState(null); // sezon aktualnie przeglądany/edytowany
   const [newSeasonName, setNewSeasonName] = useState("");
   const [newSeasonType, setNewSeasonType] = useState("liga");
+  const [newSeasonPointsPerSet, setNewSeasonPointsPerSet] = useState(25);
+  const [newSeasonSetsToWin, setNewSeasonSetsToWin] = useState(3);
   const [copySeasonSource, setCopySeasonSource] = useState("");
   const [seedOrder, setSeedOrder] = useState(null);
   const [bracketError, setBracketError] = useState("");
@@ -678,11 +682,17 @@ export default function VolleyballLeagueApp() {
       await storage.set(matchesKey(id), JSON.stringify([]));
       await storage.set(venuesKey(id), JSON.stringify(newVenues));
       await storage.set(announcementsKey(id), JSON.stringify([]));
-      const nextSeasons = [...seasons, { id, name, type: newSeasonType, createdAt: Date.now() }];
+      const nextSeasons = [...seasons, {
+        id, name, type: newSeasonType, createdAt: Date.now(),
+        pointsPerSet: newSeasonType === "turniej" ? (Number(newSeasonPointsPerSet) || 25) : 25,
+        setsToWin: newSeasonType === "turniej" ? (Number(newSeasonSetsToWin) || 3) : 3,
+      }];
       await storage.set(SEASONS_KEY, JSON.stringify(nextSeasons));
       setSeasons(nextSeasons);
       setNewSeasonName("");
       setNewSeasonType("liga");
+      setNewSeasonPointsPerSet(25);
+      setNewSeasonSetsToWin(3);
       setCopySeasonSource("");
       await switchSeason(id);
     } catch (e) {
@@ -707,6 +717,14 @@ export default function VolleyballLeagueApp() {
     try { await storage.delete(announcementsKey(id)); } catch (e) { /* ignore */ }
     if (id === currentSeasonId) await setAsCurrentSeason(nextSeasons[0].id);
     if (id === selectedSeasonId) await switchSeason(nextSeasons[0].id);
+  }
+
+  // Zmienia format meczu (punkty w secie / sety do wygrania) dla danego sezonu —
+  // dotyczy tylko turniejów pucharowych.
+  async function updateSeasonSettings(id, field, value) {
+    const nextSeasons = seasons.map((s) => (s.id === id ? { ...s, [field]: value } : s));
+    setSeasons(nextSeasons);
+    try { await storage.set(SEASONS_KEY, JSON.stringify(nextSeasons)); } catch (e) { /* ignore */ }
   }
 
   const saveTeams = useCallback(async (next) => {
@@ -810,7 +828,7 @@ export default function VolleyballLeagueApp() {
       sets[setIndex] = { ...sets[setIndex], [side]: clean };
       return { ...m, sets };
     });
-    if (next.some((m) => m.bracket)) next = advanceBracket(next);
+    if (next.some((m) => m.bracket)) next = advanceBracket(next, currentSeasonObj?.setsToWin || 3);
     saveMatches(next);
   }
 
@@ -827,7 +845,7 @@ export default function VolleyballLeagueApp() {
     setBracketError("");
     const order = seedOrder && seedOrder.length === teams.length ? seedOrder : teams.map((t) => t.id);
     if (order.length < 2) { setBracketError("Potrzebujesz co najmniej 2 drużyn."); return; }
-    saveMatches(advanceBracket(generateBracketMatches(order)));
+    saveMatches(advanceBracket(generateBracketMatches(order), currentSeasonObj?.setsToWin || 3));
   }
 
   function addDateRow() {
@@ -936,7 +954,7 @@ export default function VolleyballLeagueApp() {
     if (isTournament) return 0; // kolejność drabinki = kolejność generowania rund
     return Number(a) - Number(b);
   });
-  const activeRound = rounds.find((r) => matches.some((m) => m.round === r && !matchOutcome(m).played));
+  const activeRound = rounds.find((r) => matches.some((m) => m.round === r && !matchOutcome(m, currentSeasonObj?.setsToWin || 3).played));
 
   if (loading) {
     return (
@@ -1024,8 +1042,8 @@ export default function VolleyballLeagueApp() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 30, justifyContent: "center", height: "100%" }}>
                         {matches.filter((m) => m.round === round).map((m) => {
-                          const o = matchOutcome(m);
-                          const bo = bracketMatchOutcome(m);
+                          const o = matchOutcome(m, currentSeasonObj?.setsToWin || 3);
+                          const bo = bracketMatchOutcome(m, currentSeasonObj?.setsToWin || 3);
                           return (
                             <div key={m.id} style={{
                               background: "#fff", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", boxShadow: "var(--shadow-sm)",
@@ -1048,8 +1066,8 @@ export default function VolleyballLeagueApp() {
                 {(() => {
                   const finalMatch = matches.find((m) => m.round === "Finał");
                   const bronzeMatch = matches.find((m) => m.round === "Mecz o 3. miejsce");
-                  const finalOutcome = finalMatch ? bracketMatchOutcome(finalMatch) : null;
-                  const bronzeOutcome = bronzeMatch ? bracketMatchOutcome(bronzeMatch) : null;
+                  const finalOutcome = finalMatch ? bracketMatchOutcome(finalMatch, currentSeasonObj?.setsToWin || 3) : null;
+                  const bronzeOutcome = bronzeMatch ? bracketMatchOutcome(bronzeMatch, currentSeasonObj?.setsToWin || 3) : null;
                   if (!finalOutcome?.played) return null;
                   return (
                     <div style={{ marginTop: 22, textAlign: "center" }}>
@@ -1153,7 +1171,7 @@ export default function VolleyballLeagueApp() {
                     .slice()
                     .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""))
                     .map((m) => {
-                    const o = matchOutcome(m);
+                    const o = matchOutcome(m, currentSeasonObj?.setsToWin || 3);
                     return (
                       <div key={m.id} className="vb-match-card">
                         <div className="vb-match-info">
@@ -1168,13 +1186,33 @@ export default function VolleyballLeagueApp() {
                         </div>
                         <div className="vb-match-actions">
                           {o.played ? (
-                            <span className="vb-display" style={{ fontSize: 20, color: "var(--navy)" }}>
-                              {o.homeSets} : {o.awaySets}
+                            <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                              <span className="vb-display" style={{ fontSize: 20, color: "var(--navy)" }}>
+                                {o.homeSets} : {o.awaySets}
+                              </span>
+                              {(m.sets || []).some((s) => s.home !== "" && s.away !== "") && (
+                                <span style={{ fontSize: 11, color: "var(--grey)", whiteSpace: "nowrap" }}>
+                                  {(m.sets || [])
+                                    .filter((s) => s.home !== "" && s.away !== "")
+                                    .map((s) => `${s.home}:${s.away}`)
+                                    .join(", ")}
+                                </span>
+                              )}
                             </span>
                           ) : (o.homeSets > 0 || o.awaySets > 0) ? (
                             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span className="vb-display" style={{ fontSize: 20, color: "var(--navy)" }}>
-                                {o.homeSets} : {o.awaySets}
+                              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                                <span className="vb-display" style={{ fontSize: 20, color: "var(--navy)" }}>
+                                  {o.homeSets} : {o.awaySets}
+                                </span>
+                                {(m.sets || []).some((s) => s.home !== "" && s.away !== "") && (
+                                  <span style={{ fontSize: 11, color: "var(--grey)", whiteSpace: "nowrap" }}>
+                                    {(m.sets || [])
+                                      .filter((s) => s.home !== "" && s.away !== "")
+                                      .map((s) => `${s.home}:${s.away}`)
+                                      .join(", ")}
+                                  </span>
+                                )}
                               </span>
                               <span style={{ fontSize: 11, color: "var(--grey)", fontStyle: "italic" }}>w trakcie</span>
                             </span>
@@ -1281,10 +1319,11 @@ export default function VolleyballLeagueApp() {
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {seasons.map((s) => (
                   <div key={s.id} style={{
-                    display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                    display: "flex", flexDirection: "column", gap: 6,
                     background: s.id === selectedSeasonId ? "#EAE5D9" : "#fff",
                     border: "1px solid #DFD8C8", borderRadius: 8, padding: "8px 10px",
                   }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 100 }}>
                       {s.name}
                       <span style={{ fontWeight: 400, color: "var(--grey)", fontSize: 11 }}>
@@ -1324,6 +1363,26 @@ export default function VolleyballLeagueApp() {
                         </button>
                       )
                     )}
+                    </div>
+                    {s.type === "turniej" && (
+                      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", paddingTop: 4, borderTop: "1px dashed #DFD8C8" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--grey)" }}>
+                          Punkty w secie
+                          <input className="vb-input" type="number" min={1} style={{ width: 56, padding: "3px 6px" }}
+                            value={s.pointsPerSet ?? 25}
+                            onChange={(e) => updateSeasonSettings(s.id, "pointsPerSet", Number(e.target.value.replace(/[^0-9]/g, "")) || 25)} />
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--grey)" }}>
+                          Format meczu
+                          <select className="vb-input" style={{ padding: "3px 6px" }} value={s.setsToWin ?? 3}
+                            onChange={(e) => updateSeasonSettings(s.id, "setsToWin", Number(e.target.value))}>
+                            <option value={1}>1 set</option>
+                            <option value={2}>Best of 3</option>
+                            <option value={3}>Best of 5</option>
+                          </select>
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1340,6 +1399,25 @@ export default function VolleyballLeagueApp() {
                     Turniej jednodniowy (drabinka pucharowa)
                   </label>
                 </div>
+                {newSeasonType === "turniej" && (
+                  <div style={{ display: "flex", gap: 16, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                      Punkty w secie
+                      <input className="vb-input" type="number" min={1} style={{ width: 64, padding: "5px 8px" }}
+                        value={newSeasonPointsPerSet}
+                        onChange={(e) => setNewSeasonPointsPerSet(e.target.value.replace(/[^0-9]/g, ""))} />
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                      Format meczu
+                      <select className="vb-input" style={{ padding: "5px 8px" }} value={newSeasonSetsToWin}
+                        onChange={(e) => setNewSeasonSetsToWin(e.target.value)}>
+                        <option value={1}>1 set (mecz do 1 wygranego seta)</option>
+                        <option value={2}>Do 2 wygranych setów (best of 3)</option>
+                        <option value={3}>Do 3 wygranych setów (best of 5)</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <input className="vb-input" placeholder="Nazwa sezonu, np. 2027/2028" value={newSeasonName}
                     onChange={(e) => setNewSeasonName(e.target.value)}
@@ -1362,6 +1440,11 @@ export default function VolleyballLeagueApp() {
               <div style={{ fontSize: 12, color: "var(--grey)", marginBottom: 10 }}>
                 Możesz przełożyć mecz na inny termin, zamienić kolejkę albo zamienić drużyny — zmiany zapisują się od razu.
               </div>
+              {isTournament && (
+                <div style={{ fontSize: 12, color: "var(--navy)", background: "#F5F0E4", border: "1px solid #E2DBC9", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+                  Format turnieju: sety do {currentSeasonObj?.pointsPerSet || 25} pkt, mecz do {currentSeasonObj?.setsToWin || 3} wygranych {(currentSeasonObj?.setsToWin || 3) === 1 ? "seta" : "setów"} — zmienisz go w sekcji „Sezony” powyżej.
+                </div>
+              )}
               {Object.keys(venueConflicts).length > 0 && (
                 <div style={{ display: "flex", gap: 6, alignItems: "flex-start", background: "#F6E4DE", color: "var(--rust)", fontSize: 13, padding: "8px 12px", borderRadius: 8, marginBottom: 10 }}>
                   <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -1378,10 +1461,12 @@ export default function VolleyballLeagueApp() {
                       .slice()
                       .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""))
                       .map((m) => {
-                    const o = matchOutcome(m);
+                    const setsToWin = currentSeasonObj?.setsToWin || 3;
+                    const maxSets = setsToWin * 2 - 1;
+                    const o = matchOutcome(m, setsToWin);
                     const hasConflict = Boolean(venueConflicts[m.id]);
                     const sets = [...(m.sets || [])];
-                    while (sets.length < 5) sets.push({ home: "", away: "" });
+                    while (sets.length < maxSets) sets.push({ home: "", away: "" });
                     return (
                       <div key={m.id} style={{
                         display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
@@ -1444,9 +1529,9 @@ export default function VolleyballLeagueApp() {
                             {!m.homeId && !m.awayId ? "Oczekuje na wyniki poprzedniej rundy" : "Wolny los — awans automatyczny"}
                           </div>
                         ) : (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginRight: 4, maxWidth: 96 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, maxWidth: "100%" }}>
+                            <div className="vb-sets-row" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", rowGap: 6 }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginRight: 4, maxWidth: 96, flexShrink: 0 }}>
                                 <span style={{ display: "block", fontSize: 11, color: "var(--navy)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={teamName(m.homeId)}>
                                   {teamName(m.homeId)}
                                 </span>
@@ -1457,7 +1542,7 @@ export default function VolleyballLeagueApp() {
                               {sets.map((s, i) => {
                                 const invalid = setInvalid(s);
                                 return (
-                                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
                                     <input className="vb-score-input" style={invalid ? { borderColor: "var(--rust)" } : undefined} value={s.home}
                                       onChange={(e) => updateSet(m.id, i, "home", e.target.value)} maxLength={2} />
                                     <input className="vb-score-input" style={invalid ? { borderColor: "var(--rust)" } : undefined} value={s.away}
@@ -1828,6 +1913,7 @@ export default function VolleyballLeagueApp() {
           match={matchToPrint}
           teams={teams}
           seasonName={currentSeasonName}
+          setsToWin={currentSeasonObj?.setsToWin || 3}
           onClose={() => setPrintMatchId(null)}
         />
       )}
@@ -1986,11 +2072,12 @@ function SchedulePoster({ matches, teams, rounds, seasonName, onClose }) {
   );
 }
 
-function MatchProtocol({ match, teams, seasonName, onClose }) {
+function MatchProtocol({ match, teams, seasonName, setsToWin = 3, onClose }) {
   const teamName = (id) => teams.find((t) => t.id === id)?.name || "—";
-  const o = matchOutcome(match);
+  const o = matchOutcome(match, setsToWin);
+  const maxSets = setsToWin * 2 - 1;
   const sets = [...(match.sets || [])];
-  while (sets.length < 5) sets.push({ home: "", away: "" });
+  while (sets.length < maxSets) sets.push({ home: "", away: "" });
   const printedAt = new Date().toLocaleDateString("pl-PL", { day: "numeric", month: "long", year: "numeric" });
   const protocolNo = `${match.round || "?"}/${(match.id || "").toUpperCase()}`;
 
@@ -2047,7 +2134,7 @@ function MatchProtocol({ match, teams, seasonName, onClose }) {
         <table className="vb-protocol-table" style={{ marginBottom: 10 }}>
           <thead>
             <tr>
-              <th>Set</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th>
+              <th>Set</th>{sets.map((_, i) => <th key={i}>{i + 1}</th>)}
             </tr>
           </thead>
           <tbody>
