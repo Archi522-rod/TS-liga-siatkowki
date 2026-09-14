@@ -536,11 +536,22 @@ export default function VolleyballLeagueApp() {
   const [seasonError, setSeasonError] = useState("");
   const [confirmDeleteSeasonId, setConfirmDeleteSeasonId] = useState(null);
 
-  const [adminPasswordExists, setAdminPasswordExists] = useState(null); // null=unknown
+  const [accountsExist, setAccountsExist] = useState(null); // null=unknown
   const [unlocked, setUnlocked] = useState(false);
+  const [loginUsername, setLoginUsername] = useState("");
   const [passInput, setPassInput] = useState("");
   const [passInput2, setPassInput2] = useState("");
   const [passError, setPassError] = useState("");
+  const [sessionUsername, setSessionUsername] = useState("");
+  const [sessionPassword, setSessionPassword] = useState("");
+  const [adminAccounts, setAdminAccounts] = useState([]);
+  const [accountsLoadError, setAccountsLoadError] = useState("");
+  const [newAccUsername, setNewAccUsername] = useState("");
+  const [newAccPassword, setNewAccPassword] = useState("");
+  const [newAccError, setNewAccError] = useState("");
+  const [confirmRemoveAcc, setConfirmRemoveAcc] = useState("");
+  const [changeOwnPass, setChangeOwnPass] = useState("");
+  const [changeOwnPassMsg, setChangeOwnPassMsg] = useState("");
 
   const [newTeamName, setNewTeamName] = useState("");
   const [newMatch, setNewMatch] = useState({ round: "1", date: "", time: "", venue: "", homeId: "", awayId: "" });
@@ -621,10 +632,10 @@ export default function VolleyballLeagueApp() {
         setAnnouncements(a);
 
         try {
-          const exists = await adminAuth.passwordExists();
-          setAdminPasswordExists(exists);
+          const exists = await adminAuth.accountsExist();
+          setAccountsExist(exists);
         } catch (e) {
-          setAdminPasswordExists(false);
+          setAccountsExist(false);
         }
       } catch (e) {
         setStorageError(true);
@@ -916,33 +927,100 @@ export default function VolleyballLeagueApp() {
     setGenPreview(null);
   }
 
-  async function handleSetPassword() {
+  async function handleBootstrapAccount() {
     setPassError("");
+    if (loginUsername.trim().length < 2) { setPassError("Login musi mieć min. 2 znaki."); return; }
     if (passInput.length < 4) { setPassError("Hasło musi mieć min. 4 znaki."); return; }
     if (passInput !== passInput2) { setPassError("Hasła nie są identyczne."); return; }
     try {
-      await adminAuth.setPassword(passInput);
-      setAdminPasswordExists(true);
+      await adminAuth.bootstrapAccount(loginUsername.trim(), passInput);
+      setAccountsExist(true);
+      setSessionUsername(loginUsername.trim());
+      setSessionPassword(passInput);
       setUnlocked(true);
-      setPassInput(""); setPassInput2("");
+      fetchAccounts(loginUsername.trim(), passInput);
+      setLoginUsername(""); setPassInput(""); setPassInput2("");
     } catch (e) {
-      setPassError("Nie udało się zapisać hasła. Spróbuj ponownie.");
+      setPassError("Nie udało się utworzyć konta. Spróbuj ponownie.");
     }
   }
 
   async function handleLogin() {
     setPassError("");
+    if (!loginUsername.trim() || !passInput) { setPassError("Podaj login i hasło."); return; }
     try {
-      const ok = await adminAuth.verifyPassword(passInput);
+      const ok = await adminAuth.login(loginUsername.trim(), passInput);
       if (ok) {
+        setSessionUsername(loginUsername.trim());
+        setSessionPassword(passInput);
         setUnlocked(true);
-        setPassInput("");
+        fetchAccounts(loginUsername.trim(), passInput);
+        setLoginUsername(""); setPassInput("");
       } else {
-        setPassError("Błędne hasło.");
+        setPassError("Błędny login lub hasło.");
       }
     } catch (e) {
-      setPassError("Nie udało się sprawdzić hasła.");
+      setPassError("Nie udało się sprawdzić danych logowania.");
     }
+  }
+
+  async function fetchAccounts(u, p) {
+    setAccountsLoadError("");
+    try {
+      const list = await adminAuth.listAccounts(u, p);
+      setAdminAccounts(list);
+    } catch (e) {
+      setAccountsLoadError("Nie udało się pobrać listy kont.");
+    }
+  }
+
+  async function loadAdminAccounts() {
+    await fetchAccounts(sessionUsername, sessionPassword);
+  }
+
+  async function handleAddAccount() {
+    setNewAccError("");
+    if (newAccUsername.trim().length < 2) { setNewAccError("Login musi mieć min. 2 znaki."); return; }
+    if (newAccPassword.length < 4) { setNewAccError("Hasło musi mieć min. 4 znaki."); return; }
+    try {
+      await adminAuth.addAccount(sessionUsername, sessionPassword, newAccUsername.trim(), newAccPassword);
+      setNewAccUsername(""); setNewAccPassword("");
+      await fetchAccounts(sessionUsername, sessionPassword);
+    } catch (e) {
+      const msg = String(e?.message || "");
+      if (msg.includes("username_taken")) setNewAccError("Ten login jest już zajęty.");
+      else setNewAccError("Nie udało się dodać konta.");
+    }
+  }
+
+  async function handleRemoveAccount(username) {
+    try {
+      await adminAuth.removeAccount(sessionUsername, sessionPassword, username);
+      setConfirmRemoveAcc("");
+      await fetchAccounts(sessionUsername, sessionPassword);
+    } catch (e) {
+      setAccountsLoadError("Nie udało się usunąć konta (może to ostatnie pozostałe?).");
+    }
+  }
+
+  async function handleChangeOwnPassword() {
+    setChangeOwnPassMsg("");
+    if (changeOwnPass.length < 4) { setChangeOwnPassMsg("Hasło musi mieć min. 4 znaki."); return; }
+    try {
+      await adminAuth.changePassword(sessionUsername, sessionPassword, changeOwnPass);
+      setSessionPassword(changeOwnPass);
+      setChangeOwnPass("");
+      setChangeOwnPassMsg("Hasło zmienione.");
+    } catch (e) {
+      setChangeOwnPassMsg("Nie udało się zmienić hasła.");
+    }
+  }
+
+  function handleLogout() {
+    setUnlocked(false);
+    setSessionUsername("");
+    setSessionPassword("");
+    setAdminAccounts([]);
   }
 
   const teamName = (id) => teams.find((t) => t.id === id)?.name || "?";
@@ -1264,7 +1342,7 @@ export default function VolleyballLeagueApp() {
             background: "#fff", border: "1px solid var(--line)", borderRadius: "var(--radius)",
             boxShadow: "var(--shadow-md)", padding: "28px 26px",
           }}>
-            {adminPasswordExists === false ? (
+            {accountsExist === false ? (
               <>
                 <div style={{
                   width: 52, height: 52, borderRadius: "50%", background: "var(--chalk-2)",
@@ -1272,15 +1350,17 @@ export default function VolleyballLeagueApp() {
                 }}>
                   <KeyRound size={24} color="var(--oak)" />
                 </div>
-                <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 15 }}>Ustaw hasło administratora</div>
-                <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 16 }}>Będzie potrzebne do zarządzania drużynami i wynikami.</div>
-                <input type="password" className="vb-input" placeholder="Nowe hasło" value={passInput}
+                <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 15 }}>Utwórz pierwsze konto administratora</div>
+                <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 16 }}>Będzie potrzebne do zarządzania drużynami i wynikami. Kolejne osoby dodasz później w panelu.</div>
+                <input type="text" autoComplete="username" className="vb-input" placeholder="Login" value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
+                <input type="password" autoComplete="new-password" className="vb-input" placeholder="Nowe hasło" value={passInput}
                   onChange={(e) => setPassInput(e.target.value)} style={{ width: "100%", marginBottom: 8 }} />
-                <input type="password" className="vb-input" placeholder="Powtórz hasło" value={passInput2}
+                <input type="password" autoComplete="new-password" className="vb-input" placeholder="Powtórz hasło" value={passInput2}
                   onChange={(e) => setPassInput2(e.target.value)} style={{ width: "100%", marginBottom: 10 }} />
                 {passError && <div style={{ color: "var(--rust)", fontSize: 13, marginBottom: 8 }}>{passError}</div>}
-                <button className="vb-btn" style={{ background: "var(--oak)", color: "#fff", width: "100%" }} onClick={handleSetPassword}>
-                  Ustaw hasło i wejdź
+                <button className="vb-btn" style={{ background: "var(--oak)", color: "#fff", width: "100%" }} onClick={handleBootstrapAccount}>
+                  Utwórz konto i wejdź
                 </button>
               </>
             ) : (
@@ -1292,7 +1372,11 @@ export default function VolleyballLeagueApp() {
                   <Lock size={24} color="var(--oak)" />
                 </div>
                 <div style={{ fontWeight: 700, marginBottom: 16, fontSize: 15 }}>Panel administratora</div>
-                <input type="password" className="vb-input" placeholder="Hasło" value={passInput}
+                <input type="text" autoComplete="username" className="vb-input" placeholder="Login" value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                  style={{ width: "100%", marginBottom: 8 }} />
+                <input type="password" autoComplete="current-password" className="vb-input" placeholder="Hasło" value={passInput}
                   onChange={(e) => setPassInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                   style={{ width: "100%", marginBottom: 10 }} />
@@ -1896,8 +1980,71 @@ export default function VolleyballLeagueApp() {
               {teams.length < 2 && <div style={{ fontSize: 12, color: "var(--grey)", marginTop: 6 }}>Dodaj co najmniej 2 drużyny, żeby zaplanować mecz.</div>}
             </Section>
 
+            <Section title="Konta administratorów" defaultOpen>
+              <div style={{ fontSize: 12, color: "var(--grey)", marginBottom: 10 }}>
+                Zalogowano jako <strong>{sessionUsername}</strong>. Tu dodasz lub usuniesz dostęp dla innych osób.
+              </div>
+              {accountsLoadError && <div style={{ color: "var(--rust)", fontSize: 13, marginBottom: 8 }}>{accountsLoadError}</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+                {adminAccounts.length === 0 && !accountsLoadError && (
+                  <div style={{ fontSize: 12, color: "var(--grey)" }}>Wczytywanie listy kont…</div>
+                )}
+                {adminAccounts.map((a) => (
+                  <div key={a.username} style={{
+                    display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                    background: "#fff", border: "1px solid #DFD8C8", borderRadius: 8, padding: "6px 10px",
+                  }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 100 }}>
+                      {a.username}
+                      {a.username === sessionUsername && (
+                        <span style={{ fontWeight: 400, color: "var(--oak)", fontSize: 11 }}> · Ty</span>
+                      )}
+                    </span>
+                    {adminAccounts.length > 1 && (
+                      confirmRemoveAcc === a.username ? (
+                        <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+                          <span style={{ color: "var(--rust)" }}>Na pewno usunąć?</span>
+                          <button className="vb-btn" style={{ background: "var(--rust)", color: "#fff", fontSize: 12, padding: "4px 8px" }} onClick={() => handleRemoveAccount(a.username)}>
+                            Tak, usuń
+                          </button>
+                          <button className="vb-btn" style={{ background: "none", border: "1px solid #C9C2B3", color: "var(--navy)", fontSize: 12, padding: "4px 8px" }} onClick={() => setConfirmRemoveAcc("")}>
+                            Anuluj
+                          </button>
+                        </span>
+                      ) : (
+                        <button onClick={() => setConfirmRemoveAcc(a.username)} title="Usuń konto" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
+                          <Trash2 size={14} />
+                        </button>
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
 
-            <button onClick={() => setUnlocked(false)} style={{
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Dodaj nową osobę</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
+                <input type="text" autoComplete="off" className="vb-input" placeholder="Login" value={newAccUsername}
+                  onChange={(e) => setNewAccUsername(e.target.value)} style={{ width: 140 }} />
+                <input type="password" autoComplete="new-password" className="vb-input" placeholder="Hasło (min. 4 znaki)" value={newAccPassword}
+                  onChange={(e) => setNewAccPassword(e.target.value)} style={{ width: 160 }} />
+                <button className="vb-btn" style={{ background: "var(--oak)", color: "#fff" }} onClick={handleAddAccount}>
+                  Dodaj konto
+                </button>
+              </div>
+              {newAccError && <div style={{ color: "var(--rust)", fontSize: 13, marginBottom: 6 }}>{newAccError}</div>}
+
+              <div style={{ fontSize: 13, fontWeight: 600, marginTop: 14, marginBottom: 6 }}>Zmień własne hasło</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="password" autoComplete="new-password" className="vb-input" placeholder="Nowe hasło" value={changeOwnPass}
+                  onChange={(e) => setChangeOwnPass(e.target.value)} style={{ width: 160 }} />
+                <button className="vb-btn" style={{ background: "none", border: "1px solid #C9C2B3", color: "var(--navy)" }} onClick={handleChangeOwnPassword}>
+                  Zapisz hasło
+                </button>
+                {changeOwnPassMsg && <span style={{ fontSize: 12, color: changeOwnPassMsg === "Hasło zmienione." ? "var(--oak)" : "var(--rust)" }}>{changeOwnPassMsg}</span>}
+              </div>
+            </Section>
+
+            <button onClick={handleLogout} style={{
               background: "none", border: "none", color: "var(--grey)", fontSize: 12, cursor: "pointer",
               display: "flex", alignItems: "center", gap: 4, marginTop: 4,
             }}>
