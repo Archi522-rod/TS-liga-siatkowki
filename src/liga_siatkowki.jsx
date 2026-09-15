@@ -879,17 +879,17 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
   );
 }
 
-// Widok "Rundy" (kolumny) — ten sam mechanizm dopasowania do szerokości ekranu
-// (checkbox + skalowanie transform: scale) co w BrazylijskiGraphSVG, tylko
-// zamiast SVG mierzymy naturalny rozmiar treści przez ref (offsetWidth/offsetHeight
-// nie zmieniają się pod wpływem transform, więc pomiar jest wiarygodny).
+// Widok "Rundy" (kolumny) — ten sam mechanizm dopasowania do rozmiaru ekranu
+// co w BrazylijskiGraphSVG: wymiary treści liczone ANALITYCZNIE (z liczby rund
+// i maksymalnej liczby meczów w rundzie), a nie mierzone asynchronicznie przez
+// ref/ResizeObserver — dzięki temu skala jest znana już przy pierwszym renderze
+// i nie zależy od zawodnego pomiaru DOM.
 function RundyColumnsView({ rounds, matches, teamName, setsToWin, matchOutcome, bracketMatchOutcome }) {
+  const colW = 190, colGap = 18, rowH = 58, rowGap = 30, titleH = 34;
   const containerRef = useRef(null);
-  const contentRef = useRef(null);
   const [fitToScreen, setFitToScreen] = useState(true);
   const [containerWidth, setContainerWidth] = useState(null);
   const [availableHeight, setAvailableHeight] = useState(null);
-  const [contentSize, setContentSize] = useState({ width: null, height: null });
 
   useEffect(() => {
     const el = containerRef.current;
@@ -906,19 +906,12 @@ function RundyColumnsView({ rounds, matches, teamName, setsToWin, matchOutcome, 
     return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", update); };
   }, []);
 
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const update = () => setContentSize({ width: el.offsetWidth, height: el.offsetHeight });
-    update();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
-    if (ro) ro.observe(el);
-    window.addEventListener("resize", update);
-    return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", update); };
-  }, [rounds.length, matches.length]);
+  const maxRows = rounds.reduce((max, round) => Math.max(max, matches.filter((m) => m.round === round).length), 0);
+  const contentWidth = rounds.length * colW + Math.max(0, rounds.length - 1) * colGap;
+  const contentHeight = titleH + (maxRows > 0 ? maxRows * rowH + Math.max(0, maxRows - 1) * rowGap : 0);
 
-  const scale = fitToScreen && containerWidth && contentSize.width
-    ? Math.min(1, containerWidth / contentSize.width, availableHeight && contentSize.height ? availableHeight / contentSize.height : 1)
+  const scale = fitToScreen && containerWidth
+    ? Math.min(1, containerWidth / contentWidth, availableHeight ? availableHeight / contentHeight : 1)
     : 1;
 
   return (
@@ -928,14 +921,14 @@ function RundyColumnsView({ rounds, matches, teamName, setsToWin, matchOutcome, 
         Dopasuj do rozmiaru ekranu
       </label>
       <div ref={containerRef} style={{ overflowX: scale < 1 ? "hidden" : "auto", paddingBottom: 12, width: "100%" }}>
-        <div style={{ width: contentSize.width ? contentSize.width * scale : undefined, height: contentSize.height ? contentSize.height * scale : undefined }}>
-          <div ref={contentRef} style={{ display: "flex", gap: 18, width: "max-content", transform: `scale(${scale})`, transformOrigin: "top left" }}>
+        <div style={{ width: contentWidth * scale, height: contentHeight * scale }}>
+          <div style={{ display: "flex", gap: colGap, width: contentWidth, transform: `scale(${scale})`, transformOrigin: "top left" }}>
             {rounds.map((round) => (
-              <div key={round} style={{ minWidth: 190, flex: "0 0 auto" }}>
+              <div key={round} style={{ width: colW, flex: "0 0 auto" }}>
                 <div className="vb-display" style={{ fontSize: 15, color: "var(--oak)", marginBottom: 10, textAlign: "center" }}>
                   {round}
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 30, justifyContent: "center", height: "100%" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: rowGap, justifyContent: "center", height: "100%" }}>
                   {matches.filter((m) => m.round === round).map((m) => {
                     const o = matchOutcome(m, setsToWin);
                     const bo = bracketMatchOutcome(m, setsToWin);
@@ -944,12 +937,12 @@ function RundyColumnsView({ rounds, matches, teamName, setsToWin, matchOutcome, 
                         background: "#fff", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", boxShadow: "var(--shadow-sm)",
                       }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, fontWeight: bo.winner && bo.winner === m.homeId ? 700 : 400, padding: "2px 0" }}>
-                          <span>{m.homeId ? teamName(m.homeId) : "—"}</span>
-                          <span style={{ color: "var(--grey)" }}>{o.played ? o.homeSets : ""}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.homeId ? teamName(m.homeId) : "—"}</span>
+                          <span style={{ color: "var(--grey)", flexShrink: 0 }}>{o.played ? o.homeSets : ""}</span>
                         </div>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, fontWeight: bo.winner && bo.winner === m.awayId ? 700 : 400, padding: "2px 0" }}>
-                          <span>{m.awayId ? teamName(m.awayId) : "—"}</span>
-                          <span style={{ color: "var(--grey)" }}>{o.played ? o.awaySets : ""}</span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.awayId ? teamName(m.awayId) : "—"}</span>
+                          <span style={{ color: "var(--grey)", flexShrink: 0 }}>{o.played ? o.awaySets : ""}</span>
                         </div>
                       </div>
                     );
