@@ -1508,7 +1508,12 @@ export default function VolleyballLeagueApp() {
     const rowsForAssign = validRows.map((r) => ({ date: r.date.trim(), slots: r.slots.map((s) => ({ time: s.time, venue: s.venue || defaultVenueName })) }));
     const { scheduled, unscheduled } = assignToDates(rounds, rowsForAssign);
     const conflictCount = Object.keys(findVenueConflicts(scheduled.map((m, i) => ({ ...m, id: String(i) })))).length;
-    setGenPreview({ scheduled, unscheduledCount: unscheduled, totalMatches, roundsCount: validRows.length, conflictCount });
+    // Przy N drużynach da się rozegrać jednocześnie maksymalnie floor(N/2) meczów (przy nieparzystej
+    // liczbie drużyn jedna zawsze pauzuje) — jeśli w którymś dniu zdefiniowano więcej slotów niż to,
+    // część z nich NIGDY się nie zapełni, niezależnie od liczby dodanych terminów.
+    const maxPerDay = Math.floor(teamIds.length / 2);
+    const oversizedDaysCount = validRows.filter((r) => r.slots.length > maxPerDay).length;
+    setGenPreview({ scheduled, unscheduledCount: unscheduled, totalMatches, roundsCount: validRows.length, conflictCount, maxPerDay, oversizedDaysCount });
   }
 
   function handleConfirmGenerate() {
@@ -2550,7 +2555,14 @@ export default function VolleyballLeagueApp() {
                   {genPreview.unscheduledCount > 0 && (
                     <div style={{ display: "flex", gap: 6, alignItems: "flex-start", color: "var(--rust)", fontSize: 13, marginBottom: 8 }}>
                       <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                      {genPreview.unscheduledCount} meczów nie zmieściło się w podanych terminach — dodaj więcej dat lub slotów godzinowych.
+                      {genPreview.oversizedDaysCount > 0 ? (
+                        <span>
+                          {genPreview.unscheduledCount} meczów nie zmieściło się w terminarzu. Przy {teams.length} drużynach da się rozegrać jednocześnie maksymalnie {genPreview.maxPerDay} {genPreview.maxPerDay === 1 ? "mecz" : "mecze"} dziennie (
+                          {genPreview.oversizedDaysCount === 1 ? "jeden dzień ma" : `${genPreview.oversizedDaysCount} dni ma`} zdefiniowanych więcej slotów niż da się realnie wypełnić) — zmniejsz liczbę slotów w tych dniach, dodanie kolejnych dat tego nie naprawi.
+                        </span>
+                      ) : (
+                        <span>{genPreview.unscheduledCount} meczów nie zmieściło się w podanych terminach — dodaj więcej dat lub slotów godzinowych.</span>
+                      )}
                     </div>
                   )}
                   {matches.length > 0 && (
