@@ -461,11 +461,18 @@ function generateBracketMatches(seedTeamIds) {
 // Wynik meczu drabinki: jeśli jedna strona to wolny los (brak drużyny), mecz jest
 // automatycznie rozstrzygnięty bez rozgrywania.
 function bracketMatchOutcome(match, setsToWin = 3) {
-  const homeIsBye = !match.homeId;
-  const awayIsBye = !match.awayId;
-  if (homeIsBye && awayIsBye) return { played: false, winner: null, loser: null };
-  if (homeIsBye) return { played: true, winner: match.awayId, loser: null, bye: true };
-  if (awayIsBye) return { played: true, winner: match.homeId, loser: null, bye: true };
+  const allowBye = !(match.bracket && match.bracket.noBye);
+  if (allowBye) {
+    const homeIsBye = !match.homeId;
+    const awayIsBye = !match.awayId;
+    if (homeIsBye && awayIsBye) return { played: false, winner: null, loser: null };
+    if (homeIsBye) return { played: true, winner: match.awayId, loser: null, bye: true };
+    if (awayIsBye) return { played: true, winner: match.homeId, loser: null, bye: true };
+  } else if (!match.homeId || !match.awayId) {
+    // System brazylijski nie zna "wolnych losów" — brak drużyny oznacza po
+    // prostu, że poprzedni mecz jeszcze nie wyłonił zwycięzcy/przegranego.
+    return { played: false, winner: null, loser: null };
+  }
   const o = matchOutcome(match, setsToWin);
   if (!o.played) return { played: false, winner: null, loser: null };
   return {
@@ -509,6 +516,338 @@ function advanceBracket(allMatches, setsToWin = 3) {
   return allMatches.map((m) => ({ ...m }));
 }
 
+// ---- SYSTEM BRAZYLIJSKI (pełna klubowa drabinka z miejscówkami) ----
+// W odróżnieniu od zwykłej drabinki pucharowej powyżej, tu KAŻDY zespół gra
+// dalej niezależnie od wyniku — zwycięzca idzie w górę drabinki, przegrany
+// w dół, do meczów o miejsca. Kolejność i parowania meczów są tu ustalone
+// na stałe (tak jak w klubowych tabelach systemu brazylijskiego) dla 4
+// wariantów: 8, 12, 16 i 24 drużyny.
+function seed(n) { return { type: "seed", n }; }
+function win(m) { return { type: "winner", m }; }
+function lose(m) { return { type: "loser", m }; }
+
+const BRAZYLIJSKI_CONFIGS = {
+  8: {
+    championId: 14, thirdPlaceId: 13,
+    matches: [
+      { id: 1, slotA: seed(0), slotB: seed(7) },
+      { id: 2, slotA: seed(5), slotB: seed(2) },
+      { id: 3, slotA: seed(3), slotB: seed(4) },
+      { id: 4, slotA: seed(6), slotB: seed(1) },
+      { id: 5, slotA: win(1), slotB: win(2) },
+      { id: 7, slotA: lose(1), slotB: lose(2) },
+      { id: 8, slotA: lose(3), slotB: lose(4) },
+      { id: 6, slotA: win(3), slotB: win(4) },
+      { id: 10, slotA: win(8), slotB: lose(5) },
+      { id: 9, slotA: lose(6), slotB: win(7) },
+      { id: 11, slotA: win(5), slotB: win(9) },
+      { id: 12, slotA: win(6), slotB: win(10) },
+      { id: 14, slotA: win(11), slotB: win(12) },
+      { id: 13, slotA: lose(11), slotB: lose(12) },
+    ],
+  },
+  12: {
+    championId: 22, thirdPlaceId: 21,
+    matches: [
+      { id: 1, slotA: seed(7), slotB: seed(8) },
+      { id: 2, slotA: seed(4), slotB: seed(11) },
+      { id: 3, slotA: seed(5), slotB: seed(10) },
+      { id: 4, slotA: seed(6), slotB: seed(9) },
+      { id: 5, slotA: seed(0), slotB: win(1) },
+      { id: 6, slotA: win(2), slotB: seed(3) },
+      { id: 7, slotA: seed(2), slotB: win(3) },
+      { id: 8, slotA: win(4), slotB: seed(1) },
+      { id: 12, slotA: lose(1), slotB: lose(8) },
+      { id: 11, slotA: lose(2), slotB: lose(7) },
+      { id: 10, slotA: lose(3), slotB: lose(6) },
+      { id: 9, slotA: lose(4), slotB: lose(5) },
+      { id: 13, slotA: win(5), slotB: win(6) },
+      { id: 15, slotA: win(12), slotB: win(11) },
+      { id: 16, slotA: win(10), slotB: win(9) },
+      { id: 14, slotA: win(7), slotB: win(8) },
+      { id: 18, slotA: lose(13), slotB: win(16) },
+      { id: 17, slotA: lose(14), slotB: win(15) },
+      { id: 19, slotA: win(13), slotB: win(17) },
+      { id: 20, slotA: win(14), slotB: win(18) },
+      { id: 22, slotA: win(19), slotB: win(20) },
+      { id: 21, slotA: lose(19), slotB: lose(20) },
+    ],
+  },
+  16: {
+    championId: 30, thirdPlaceId: 29,
+    matches: [
+      { id: 1, slotA: seed(0), slotB: seed(15) },
+      { id: 2, slotA: seed(8), slotB: seed(7) },
+      { id: 3, slotA: seed(4), slotB: seed(11) },
+      { id: 4, slotA: seed(12), slotB: seed(3) },
+      { id: 5, slotA: seed(2), slotB: seed(13) },
+      { id: 6, slotA: seed(10), slotB: seed(5) },
+      { id: 7, slotA: seed(6), slotB: seed(9) },
+      { id: 8, slotA: seed(14), slotB: seed(1) },
+      { id: 9, slotA: win(1), slotB: win(2) },
+      { id: 10, slotA: win(3), slotB: win(4) },
+      { id: 11, slotA: win(5), slotB: win(6) },
+      { id: 12, slotA: win(7), slotB: win(8) },
+      { id: 13, slotA: lose(8), slotB: lose(7) },
+      { id: 14, slotA: lose(6), slotB: lose(5) },
+      { id: 15, slotA: lose(4), slotB: lose(3) },
+      { id: 16, slotA: lose(2), slotB: lose(1) },
+      { id: 17, slotA: win(13), slotB: lose(9) },
+      { id: 18, slotA: win(14), slotB: lose(10) },
+      { id: 19, slotA: win(15), slotB: lose(11) },
+      { id: 20, slotA: win(16), slotB: lose(12) },
+      { id: 21, slotA: win(9), slotB: win(10) },
+      { id: 22, slotA: win(11), slotB: win(12) },
+      { id: 23, slotA: win(17), slotB: win(18) },
+      { id: 24, slotA: win(19), slotB: win(20) },
+      { id: 25, slotA: lose(22), slotB: win(23) },
+      { id: 26, slotA: lose(21), slotB: win(24) },
+      { id: 27, slotA: win(21), slotB: win(25) },
+      { id: 28, slotA: win(22), slotB: win(26) },
+      { id: 29, slotA: lose(27), slotB: lose(28) },
+      { id: 30, slotA: win(27), slotB: win(28) },
+    ],
+  },
+  24: {
+    championId: 46, thirdPlaceId: 45,
+    matches: [
+      { id: 1, slotA: seed(16), slotB: seed(15) },
+      { id: 2, slotA: seed(8), slotB: seed(23) },
+      { id: 3, slotA: seed(20), slotB: seed(11) },
+      { id: 4, slotA: seed(12), slotB: seed(19) },
+      { id: 5, slotA: seed(18), slotB: seed(13) },
+      { id: 6, slotA: seed(10), slotB: seed(21) },
+      { id: 7, slotA: seed(22), slotB: seed(9) },
+      { id: 8, slotA: seed(14), slotB: seed(17) },
+      { id: 9, slotA: seed(0), slotB: win(1) },
+      { id: 10, slotA: win(2), slotB: seed(7) },
+      { id: 11, slotA: seed(4), slotB: win(3) },
+      { id: 12, slotA: win(4), slotB: seed(3) },
+      { id: 13, slotA: seed(2), slotB: win(5) },
+      { id: 14, slotA: win(6), slotB: seed(5) },
+      { id: 15, slotA: seed(6), slotB: win(7) },
+      { id: 16, slotA: win(8), slotB: seed(1) },
+      { id: 17, slotA: lose(8), slotB: lose(9) },
+      { id: 18, slotA: lose(10), slotB: lose(7) },
+      { id: 19, slotA: lose(6), slotB: lose(11) },
+      { id: 20, slotA: lose(12), slotB: lose(5) },
+      { id: 21, slotA: lose(4), slotB: lose(13) },
+      { id: 22, slotA: lose(14), slotB: lose(3) },
+      { id: 23, slotA: lose(2), slotB: lose(15) },
+      { id: 24, slotA: lose(16), slotB: lose(1) },
+      { id: 25, slotA: win(9), slotB: win(10) },
+      { id: 26, slotA: win(11), slotB: win(12) },
+      { id: 27, slotA: win(13), slotB: win(14) },
+      { id: 28, slotA: win(15), slotB: win(16) },
+      { id: 29, slotA: win(23), slotB: win(24) },
+      { id: 30, slotA: win(22), slotB: win(21) },
+      { id: 31, slotA: win(20), slotB: win(19) },
+      { id: 32, slotA: win(17), slotB: win(18) },
+      { id: 33, slotA: win(29), slotB: lose(23) },
+      { id: 34, slotA: win(30), slotB: lose(26) },
+      { id: 35, slotA: win(31), slotB: lose(27) },
+      { id: 36, slotA: win(32), slotB: lose(28) },
+      { id: 37, slotA: win(25), slotB: win(26) },
+      { id: 38, slotA: win(27), slotB: win(28) },
+      { id: 39, slotA: win(33), slotB: win(34) },
+      { id: 40, slotA: win(35), slotB: win(36) },
+      { id: 41, slotA: lose(38), slotB: win(39) },
+      { id: 42, slotA: win(40), slotB: lose(37) },
+      { id: 43, slotA: win(37), slotB: win(41) },
+      { id: 44, slotA: win(38), slotB: win(42) },
+      { id: 45, slotA: lose(43), slotB: lose(44) },
+      { id: 46, slotA: win(43), slotB: win(44) },
+    ],
+  },
+};
+
+// Buduje pełną listę meczów (ze wzajemnymi powiązaniami "zwycięzca/przegrany
+// idzie do meczu X") dla wybranego wariantu systemu brazylijskiego, na
+// podstawie listy ID drużyn w kolejności rozstawienia (R1, R2, ... od góry).
+function generateBrazylijskiMatches(seedTeamIds, size) {
+  const cfg = BRAZYLIJSKI_CONFIGS[size];
+  if (!cfg) return [];
+
+  const uidByCfgId = {};
+  const matches = cfg.matches.map((cm) => {
+    const id = uid();
+    uidByCfgId[cm.id] = id;
+    return {
+      id, round: "", date: "", time: "", venue: "",
+      homeId: null, awayId: null, sets: [],
+      bracket: { cfgId: cm.id, roundIndex: 0, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null, noBye: true },
+    };
+  });
+  const byUid = {};
+  matches.forEach((m) => { byUid[m.id] = m; });
+
+  cfg.matches.forEach((cm) => {
+    const match = byUid[uidByCfgId[cm.id]];
+    [["home", cm.slotA], ["away", cm.slotB]].forEach(([field, slot]) => {
+      if (slot.type === "seed") {
+        match[field === "home" ? "homeId" : "awayId"] = seedTeamIds[slot.n] ?? null;
+      } else if (slot.type === "winner") {
+        const src = byUid[uidByCfgId[slot.m]];
+        src.bracket.nextMatchId = match.id;
+        src.bracket.nextSlot = field === "home" ? "home" : "away";
+      } else if (slot.type === "loser") {
+        const src = byUid[uidByCfgId[slot.m]];
+        src.bracket.loserNextMatchId = match.id;
+        src.bracket.loserNextSlot = field === "home" ? "home" : "away";
+      }
+    });
+  });
+
+  // Głębokość (numer rundy) każdego meczu — najdłuższa ścieżka zależności od
+  // meczów rozstawienia — używana wyłącznie do grupowania w kolumny/rundy.
+  const byCfgId = {};
+  cfg.matches.forEach((cm) => { byCfgId[cm.id] = cm; });
+  const depthCache = {};
+  function depthOf(cfgId) {
+    if (depthCache[cfgId] !== undefined) return depthCache[cfgId];
+    depthCache[cfgId] = 0; // zabezpieczenie przed cyklem (nie powinno wystąpić)
+    const cm = byCfgId[cfgId];
+    let d = 0;
+    [cm.slotA, cm.slotB].forEach((slot) => {
+      if (slot.type !== "seed") d = Math.max(d, depthOf(slot.m) + 1);
+    });
+    depthCache[cfgId] = d;
+    return d;
+  }
+  cfg.matches.forEach((cm) => depthOf(cm.id));
+
+  cfg.matches.forEach((cm) => {
+    const match = byUid[uidByCfgId[cm.id]];
+    match.bracket.roundIndex = depthCache[cm.id];
+    if (cm.id === cfg.championId) match.round = "Finał";
+    else if (cm.id === cfg.thirdPlaceId) match.round = "Mecz o 3. miejsce";
+    else match.round = `Runda ${depthCache[cm.id] + 1}`;
+  });
+
+  return matches;
+}
+
+// Pełny graf systemu brazylijskiego (opcjonalny widok, obok prostszych kolumn) —
+// każdy mecz jako "pudełko" z dwiema drużynami, a strzałki pokazują skąd biorą
+// się kolejni rywale (zwycięzca/przegrany poprzedniego meczu). Odpowiednik
+// oryginalnego grafu SVG, przestylowany na kolory Ligi Siatkówki.
+function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
+  const colW = 190, colGap = 55, rowH = 64, rowGap = 24, marginX = 24, marginTop = 34;
+
+  const byId = {};
+  matches.forEach((m) => { byId[m.id] = m; });
+
+  const byRound = {};
+  matches.forEach((m) => {
+    const d = m.bracket?.roundIndex ?? 0;
+    (byRound[d] = byRound[d] || []).push(m);
+  });
+  const depths = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+
+  let maxRows = 0;
+  const pos = {};
+  depths.forEach((d, colIdx) => {
+    const arr = byRound[d].slice().sort((a, b) => (a.bracket?.cfgId || 0) - (b.bracket?.cfgId || 0));
+    maxRows = Math.max(maxRows, arr.length);
+    arr.forEach((m, i) => {
+      pos[m.id] = { x: marginX + colIdx * (colW + colGap), y: marginTop + i * (rowH + rowGap) };
+    });
+  });
+
+  if (depths.length === 0) return null;
+  const svgWidth = marginX * 2 + depths.length * colW + (depths.length - 1) * colGap;
+  const svgHeight = marginTop + maxRows * (rowH + rowGap);
+
+  const edges = [];
+  matches.forEach((m) => {
+    if (m.bracket?.nextMatchId && pos[m.bracket.nextMatchId]) {
+      edges.push({ from: m.id, anchor: "top", to: m.bracket.nextMatchId, toSlot: m.bracket.nextSlot, champ: byId[m.bracket.nextMatchId]?.round === "Finał" });
+    }
+    if (m.bracket?.loserNextMatchId && pos[m.bracket.loserNextMatchId]) {
+      edges.push({ from: m.id, anchor: "bottom", to: m.bracket.loserNextMatchId, toSlot: m.bracket.loserNextSlot, champ: false });
+    }
+  });
+
+  return (
+    <div style={{ overflowX: "auto", paddingBottom: 12 }}>
+      <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ display: "block", minWidth: svgWidth }}>
+        <defs>
+          <marker id="br-graf-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#B7C3CE" strokeWidth="1.4" />
+          </marker>
+          <marker id="br-graf-arrow-oak" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="#B9812E" strokeWidth="1.6" />
+          </marker>
+        </defs>
+
+        {depths.map((d, colIdx) => {
+          const x = marginX + colIdx * (colW + colGap);
+          const isFinalCol = byRound[d].some((m) => m.round === "Finał");
+          const label = isFinalCol ? "FINAŁ" : `RUNDA ${colIdx + 1}`;
+          return (
+            <g key={d}>
+              <text x={x + colW / 2} y={18} textAnchor="middle" fontSize={12} fontWeight={700}
+                fontFamily="'IBM Plex Sans', sans-serif" letterSpacing="0.06em"
+                fill={isFinalCol ? "var(--oak)" : "var(--grey)"}>
+                {label}
+              </text>
+              <line x1={x} x2={x + colW} y1={25} y2={25} stroke={isFinalCol ? "var(--oak)" : "#DFD8C8"} strokeWidth={1} />
+            </g>
+          );
+        })}
+
+        <g fill="none" strokeLinecap="round">
+          {edges.map((e, i) => {
+            const s = pos[e.from], t = pos[e.to];
+            if (!s || !t) return null;
+            const sx = s.x + colW, sy = s.y + (e.anchor === "top" ? 22 : 44);
+            const tx = t.x, ty = t.y + (e.toSlot === "home" ? 22 : 44);
+            const dx = Math.max(28, (tx - sx) * 0.5);
+            return (
+              <path key={i} d={`M${sx},${sy} C${sx + dx},${sy} ${tx - dx},${ty} ${tx},${ty}`}
+                stroke={e.champ ? "#B9812E" : "#B7C3CE"} strokeWidth={e.champ ? 1.8 : 1.2} strokeOpacity={e.champ ? 0.9 : 0.75}
+                markerEnd={`url(#br-graf-arrow${e.champ ? "-oak" : ""})`} />
+            );
+          })}
+        </g>
+
+        {matches.map((m) => {
+          const p = pos[m.id];
+          if (!p) return null;
+          const isFinal = m.round === "Finał";
+          const isThird = m.round === "Mecz o 3. miejsce";
+          const o = matchOutcome(m, setsToWin);
+          const bo = bracketMatchOutcome(m, setsToWin);
+          return (
+            <g key={m.id}>
+              <rect x={p.x} y={p.y} width={colW} height={rowH} rx={10}
+                fill="#fff" stroke={isFinal ? "var(--oak)" : isThird ? "#B79A6B" : "#DFD8C8"}
+                strokeWidth={isFinal ? 1.8 : 1} />
+              <text x={p.x + 9} y={p.y + 13} fontSize={9.5} fontWeight={600} letterSpacing="0.02em"
+                fontFamily="'IBM Plex Sans', sans-serif" fill={isFinal ? "var(--oak)" : "var(--grey)"}>
+                {`MECZ ${m.bracket?.cfgId ?? ""}`}{isFinal ? "  •  I MIEJSCE" : isThird ? "  •  III MIEJSCE" : ""}
+              </text>
+              <line x1={p.x + 9} x2={p.x + colW - 9} y1={p.y + rowH / 2 + 3} y2={p.y + rowH / 2 + 3} stroke="#DFD8C8" />
+              <foreignObject x={p.x} y={p.y + 15} width={colW} height={rowH - 15}>
+                <div xmlns="http://www.w3.org/1999/xhtml" style={{ fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 12.5, lineHeight: "24px", padding: "0 9px", color: "var(--navy)", boxSizing: "border-box" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontWeight: bo.winner && bo.winner === m.homeId ? 700 : 400 }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.homeId ? teamName(m.homeId) : "—"}</span>
+                    <span style={{ color: "var(--grey)", flexShrink: 0 }}>{o.played ? o.homeSets : ""}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontWeight: bo.winner && bo.winner === m.awayId ? 700 : 400 }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.awayId ? teamName(m.awayId) : "—"}</span>
+                    <span style={{ color: "var(--grey)", flexShrink: 0 }}>{o.played ? o.awaySets : ""}</span>
+                  </div>
+                </div>
+              </foreignObject>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 export default function VolleyballLeagueApp() {
   const [tab, setTab] = useState("tabela");
   const [selectedRound, setSelectedRound] = useState("all");
@@ -530,8 +869,10 @@ export default function VolleyballLeagueApp() {
   const [newSeasonType, setNewSeasonType] = useState("liga");
   const [newSeasonPointsPerSet, setNewSeasonPointsPerSet] = useState(25);
   const [newSeasonSetsToWin, setNewSeasonSetsToWin] = useState(3);
+  const [newSeasonBrSize, setNewSeasonBrSize] = useState(8);
   const [copySeasonSource, setCopySeasonSource] = useState("");
   const [seedOrder, setSeedOrder] = useState(null);
+  const [bracketViewMode, setBracketViewMode] = useState("kolumny"); // "kolumny" | "graf" (tylko system brazylijski)
   const [bracketError, setBracketError] = useState("");
   const [seasonError, setSeasonError] = useState("");
   const [confirmDeleteSeasonId, setConfirmDeleteSeasonId] = useState(null);
@@ -695,8 +1036,9 @@ export default function VolleyballLeagueApp() {
       await storage.set(announcementsKey(id), JSON.stringify([]));
       const nextSeasons = [...seasons, {
         id, name, type: newSeasonType, createdAt: Date.now(),
-        pointsPerSet: newSeasonType === "turniej" ? (Number(newSeasonPointsPerSet) || 25) : 25,
-        setsToWin: newSeasonType === "turniej" ? (Number(newSeasonSetsToWin) || 3) : 3,
+        pointsPerSet: newSeasonType === "turniej" || newSeasonType === "brazylijski" ? (Number(newSeasonPointsPerSet) || 25) : 25,
+        setsToWin: newSeasonType === "turniej" || newSeasonType === "brazylijski" ? (Number(newSeasonSetsToWin) || 3) : 3,
+        brSize: newSeasonType === "brazylijski" ? Number(newSeasonBrSize) || 8 : null,
       }];
       await storage.set(SEASONS_KEY, JSON.stringify(nextSeasons));
       setSeasons(nextSeasons);
@@ -704,6 +1046,7 @@ export default function VolleyballLeagueApp() {
       setNewSeasonType("liga");
       setNewSeasonPointsPerSet(25);
       setNewSeasonSetsToWin(3);
+      setNewSeasonBrSize(8);
       setCopySeasonSource("");
       await switchSeason(id);
     } catch (e) {
@@ -857,6 +1200,18 @@ export default function VolleyballLeagueApp() {
     const order = seedOrder && seedOrder.length === teams.length ? seedOrder : teams.map((t) => t.id);
     if (order.length < 2) { setBracketError("Potrzebujesz co najmniej 2 drużyn."); return; }
     saveMatches(advanceBracket(generateBracketMatches(order), currentSeasonObj?.setsToWin || 3));
+  }
+
+  function handleGenerateBrazylijski() {
+    setBracketError("");
+    const size = currentSeasonObj?.brSize;
+    if (!size || !BRAZYLIJSKI_CONFIGS[size]) { setBracketError("Nieprawidłowy rozmiar systemu brazylijskiego."); return; }
+    const order = seedOrder && seedOrder.length === teams.length ? seedOrder : teams.map((t) => t.id);
+    if (order.length !== size) {
+      setBracketError(`System brazylijski na ${size} drużyn wymaga dokładnie ${size} drużyn (masz ${order.length}).`);
+      return;
+    }
+    saveMatches(advanceBracket(generateBrazylijskiMatches(order, size), currentSeasonObj?.setsToWin || 3));
   }
 
   function addDateRow() {
@@ -1026,10 +1381,19 @@ export default function VolleyballLeagueApp() {
   const teamName = (id) => teams.find((t) => t.id === id)?.name || "?";
   const currentSeasonObj = seasons.find((s) => s.id === selectedSeasonId) || null;
   const isTournament = currentSeasonObj?.type === "turniej";
+  const isBrazylijski = currentSeasonObj?.type === "brazylijski";
   const standings = computeStandings(teams, matches);
   const venueConflicts = findVenueConflicts(matches);
   const rounds = [...new Set(matches.map((m) => m.round))].sort((a, b) => {
     if (isTournament) return 0; // kolejność drabinki = kolejność generowania rund
+    if (isBrazylijski) {
+      const rank = (r) => {
+        if (r === "Finał") return 9999;
+        if (r === "Mecz o 3. miejsce") return 9998;
+        return matches.find((x) => x.round === r)?.bracket?.roundIndex ?? 0;
+      };
+      return rank(a) - rank(b);
+    }
     return Number(a) - Number(b);
   });
   const activeRound = rounds.find((r) => matches.some((m) => m.round === r && !matchOutcome(m, currentSeasonObj?.setsToWin || 3).played));
@@ -1106,12 +1470,33 @@ export default function VolleyballLeagueApp() {
           </div>
         )}
 
-        {tab === "tabela" && isTournament && (
+        {tab === "tabela" && (isTournament || isBrazylijski) && (
           <div>
             {matches.length === 0 ? (
               <EmptyState icon={Trophy} text="Brak wygenerowanej drabinki. Wygeneruj ją w panelu Admin." />
             ) : (
               <>
+                {isBrazylijski && (
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                    <button className="vb-btn" onClick={() => setBracketViewMode("kolumny")} style={{
+                      background: bracketViewMode === "kolumny" ? "var(--navy)" : "#fff",
+                      color: bracketViewMode === "kolumny" ? "#fff" : "var(--navy)",
+                      border: "1px solid var(--navy)", fontSize: 13,
+                    }}>
+                      Kolumny
+                    </button>
+                    <button className="vb-btn" onClick={() => setBracketViewMode("graf")} style={{
+                      background: bracketViewMode === "graf" ? "var(--navy)" : "#fff",
+                      color: bracketViewMode === "graf" ? "#fff" : "var(--navy)",
+                      border: "1px solid var(--navy)", fontSize: 13,
+                    }}>
+                      Graf systemu brazylijskiego
+                    </button>
+                  </div>
+                )}
+                {isBrazylijski && bracketViewMode === "graf" ? (
+                  <BrazylijskiGraphSVG matches={matches} teamName={teamName} setsToWin={currentSeasonObj?.setsToWin || 3} />
+                ) : (
                 <div style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10 }}>
                   {rounds.map((round) => (
                     <div key={round} style={{ minWidth: 190, flex: "0 0 auto" }}>
@@ -1141,6 +1526,7 @@ export default function VolleyballLeagueApp() {
                     </div>
                   ))}
                 </div>
+                )}
                 {(() => {
                   const finalMatch = matches.find((m) => m.round === "Finał");
                   const bronzeMatch = matches.find((m) => m.round === "Mecz o 3. miejsce");
@@ -1165,7 +1551,7 @@ export default function VolleyballLeagueApp() {
           </div>
         )}
 
-        {tab === "tabela" && !isTournament && (
+        {tab === "tabela" && !isTournament && !isBrazylijski && (
           <div>
             {standings.length === 0 ? (
               <EmptyState icon={Trophy} text="Brak drużyn. Dodaj drużyny w panelu Admin, żeby zobaczyć tabelę." />
@@ -1214,7 +1600,7 @@ export default function VolleyballLeagueApp() {
             {matches.length > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 13, color: "var(--grey)" }}>{isTournament ? "Runda" : "Kolejka"}</span>
+                  <span style={{ fontSize: 13, color: "var(--grey)" }}>{(isTournament || isBrazylijski) ? "Runda" : "Kolejka"}</span>
                   <select
                     className="vb-input"
                     value={selectedRound}
@@ -1223,7 +1609,7 @@ export default function VolleyballLeagueApp() {
                   >
                     <option value="all">Wszystkie</option>
                     {rounds.map((r) => (
-                      <option key={r} value={r}>{isTournament ? r : `Kolejka ${r}`}{r === activeRound ? " (bieżąca)" : ""}</option>
+                      <option key={r} value={r}>{(isTournament || isBrazylijski) ? r : `Kolejka ${r}`}{r === activeRound ? " (bieżąca)" : ""}</option>
                     ))}
                   </select>
                 </div>
@@ -1242,7 +1628,7 @@ export default function VolleyballLeagueApp() {
                 .map((round) => (
                 <div key={round} style={{ marginBottom: 22 }}>
                   <div className="vb-display" style={{ fontSize: 18, color: "var(--oak)", marginBottom: 8 }}>
-                    {isTournament ? round : `KOLEJKA ${round}`}
+                    {(isTournament || isBrazylijski) ? round : `KOLEJKA ${round}`}
                   </div>
                   {matches
                     .filter((m) => m.round === round)
@@ -1411,7 +1797,7 @@ export default function VolleyballLeagueApp() {
                     <span style={{ fontWeight: 600, fontSize: 13, flex: 1, minWidth: 100 }}>
                       {s.name}
                       <span style={{ fontWeight: 400, color: "var(--grey)", fontSize: 11 }}>
-                        {" · "}{s.type === "turniej" ? "Turniej jednodniowy" : "Liga"}
+                        {" · "}{s.type === "turniej" ? "Turniej jednodniowy" : s.type === "brazylijski" ? `System brazylijski (${s.brSize || "?"} dr.)` : "Liga"}
                       </span>
                     </span>
                     {s.id === currentSeasonId && (
@@ -1448,7 +1834,7 @@ export default function VolleyballLeagueApp() {
                       )
                     )}
                     </div>
-                    {s.type === "turniej" && (
+                    {(s.type === "turniej" || s.type === "brazylijski") && (
                       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", paddingTop: 4, borderTop: "1px dashed #DFD8C8" }}>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--grey)" }}>
                           Punkty w secie
@@ -1482,8 +1868,26 @@ export default function VolleyballLeagueApp() {
                     <input type="radio" checked={newSeasonType === "turniej"} onChange={() => setNewSeasonType("turniej")} />
                     Turniej jednodniowy (drabinka pucharowa)
                   </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                    <input type="radio" checked={newSeasonType === "brazylijski"} onChange={() => setNewSeasonType("brazylijski")} />
+                    System brazylijski (drabinka klubowa z miejscówkami)
+                  </label>
                 </div>
-                {newSeasonType === "turniej" && (
+                {newSeasonType === "brazylijski" && (
+                  <div style={{ display: "flex", gap: 16, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                      Liczba drużyn
+                      <select className="vb-input" style={{ padding: "5px 8px" }} value={newSeasonBrSize}
+                        onChange={(e) => setNewSeasonBrSize(e.target.value)}>
+                        <option value={8}>8 drużyn</option>
+                        <option value={12}>12 drużyn</option>
+                        <option value={16}>16 drużyn</option>
+                        <option value={24}>24 drużyny</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+                {(newSeasonType === "turniej" || newSeasonType === "brazylijski") && (
                   <div style={{ display: "flex", gap: 16, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
                       Punkty w secie
@@ -1524,9 +1928,9 @@ export default function VolleyballLeagueApp() {
               <div style={{ fontSize: 12, color: "var(--grey)", marginBottom: 10 }}>
                 Możesz przełożyć mecz na inny termin, zamienić kolejkę albo zamienić drużyny — zmiany zapisują się od razu.
               </div>
-              {isTournament && (
+              {(isTournament || isBrazylijski) && (
                 <div style={{ fontSize: 12, color: "var(--navy)", background: "#F5F0E4", border: "1px solid #E2DBC9", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
-                  Format turnieju: sety do {currentSeasonObj?.pointsPerSet || 25} pkt, mecz do {currentSeasonObj?.setsToWin || 3} wygranych {(currentSeasonObj?.setsToWin || 3) === 1 ? "seta" : "setów"} — zmienisz go w sekcji „Sezony” powyżej.
+                  Format meczów: sety do {currentSeasonObj?.pointsPerSet || 25} pkt, mecz do {currentSeasonObj?.setsToWin || 3} wygranych {(currentSeasonObj?.setsToWin || 3) === 1 ? "seta" : "setów"} — zmienisz go w sekcji „Sezony” powyżej.
                 </div>
               )}
               {Object.keys(venueConflicts).length > 0 && (
@@ -1539,7 +1943,7 @@ export default function VolleyballLeagueApp() {
                 <div style={{ fontSize: 13, color: "var(--grey)" }}>Brak meczów.</div>
               ) : (
                 rounds.map((round) => (
-                  <Section key={round} title={isTournament ? round : `Kolejka ${round}`} defaultOpen={round === activeRound} compact>
+                  <Section key={round} title={(isTournament || isBrazylijski) ? round : `Kolejka ${round}`} defaultOpen={round === activeRound} compact>
                     {matches
                       .filter((m) => m.round === round)
                       .slice()
@@ -1558,7 +1962,7 @@ export default function VolleyballLeagueApp() {
                       }}>
                         <div style={{ minWidth: "min(260px, 100%)", flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 6 }}>
                           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                            {isTournament ? (
+                            {(isTournament || isBrazylijski) ? (
                               <span style={{ fontSize: 11, color: "var(--grey)" }}>{m.round}</span>
                             ) : (
                               <>
@@ -1580,7 +1984,7 @@ export default function VolleyballLeagueApp() {
                               )}
                             </select>
                           </div>
-                          {isTournament ? (
+                          {(isTournament || isBrazylijski) ? (
                             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                               <span style={{ fontWeight: 600, fontSize: 13 }}>{m.homeId ? teamName(m.homeId) : "Wolny los / TBA"}</span>
                               <span style={{ color: "var(--grey)", fontSize: 12 }}>vs</span>
@@ -1599,7 +2003,7 @@ export default function VolleyballLeagueApp() {
                               </select>
                             </div>
                           )}
-                          {!isTournament && m.homeId === m.awayId && (
+                          {!isTournament && !isBrazylijski && m.homeId === m.awayId && (
                             <div style={{ fontSize: 11, color: "var(--rust)" }}>Wybierz dwie różne drużyny.</div>
                           )}
                           {hasConflict && (
@@ -1608,9 +2012,11 @@ export default function VolleyballLeagueApp() {
                             </div>
                           )}
                         </div>
-                        {isTournament && (!m.homeId || !m.awayId) ? (
+                        {(isTournament || isBrazylijski) && (!m.homeId || !m.awayId) ? (
                           <div style={{ fontSize: 12, color: "var(--grey)", fontStyle: "italic", minWidth: 140 }}>
-                            {!m.homeId && !m.awayId ? "Oczekuje na wyniki poprzedniej rundy" : "Wolny los — awans automatyczny"}
+                            {isBrazylijski
+                              ? "Oczekuje na wynik poprzedniego meczu"
+                              : (!m.homeId && !m.awayId ? "Oczekuje na wyniki poprzedniej rundy" : "Wolny los — awans automatyczny")}
                           </div>
                         ) : (
                           <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, maxWidth: "100%" }}>
@@ -1643,8 +2049,8 @@ export default function VolleyballLeagueApp() {
                           </div>
                         )}
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          {isTournament && (!m.homeId || !m.awayId) ? (
-                            m.homeId || m.awayId ? (
+                          {(isTournament || isBrazylijski) && (!m.homeId || !m.awayId) ? (
+                            !isBrazylijski && (m.homeId || m.awayId) ? (
                               <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--oak)", fontSize: 12 }}>
                                 <Check size={14} /> wolny los
                               </span>
@@ -1675,6 +2081,11 @@ export default function VolleyballLeagueApp() {
 
             {/* Teams management */}
             <Section title="Drużyny">
+              {isBrazylijski && (
+                <div style={{ fontSize: 12, color: "var(--navy)", background: "#F5F0E4", border: "1px solid #E2DBC9", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+                  System brazylijski na {currentSeasonObj?.brSize || "?"} drużyn wymaga dokładnie tylu drużyn — obecnie masz {teams.length}.
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                 <input className="vb-input" placeholder="Nazwa nowej drużyny" value={newTeamName}
                   onChange={(e) => setNewTeamName(e.target.value)}
@@ -1801,7 +2212,7 @@ export default function VolleyballLeagueApp() {
             </Section>
 
             {/* Auto schedule generator (tylko liga) */}
-            {!isTournament && (
+            {!isTournament && !isBrazylijski && (
             <Section title="Generator terminarza (automatyczny)">
               <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 12 }}>
                 Wygeneruje mecze każdy z każdym i rozłoży je na podane terminy — dla każdej daty określ godziny i wybierz halę z listy zdefiniowanej w sekcji „Hale”. Żadna drużyna nie zagra dwa razy tego samego dnia.
@@ -1944,6 +2355,50 @@ export default function VolleyballLeagueApp() {
                     )}
                     <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }} onClick={handleGenerateBracket}>
                       <Wand2 size={15} /> Wygeneruj drabinkę
+                    </button>
+                  </>
+                )}
+              </Section>
+            )}
+
+            {isBrazylijski && (
+              <Section title="Generator systemu brazylijskiego" defaultOpen>
+                <div style={{ fontSize: 13, color: "var(--grey)", marginBottom: 12 }}>
+                  Ten sezon jest ustawiony na <strong>{currentSeasonObj?.brSize || "?"} drużyn</strong> (zmienisz to tylko
+                  zakładając nowy sezon). Ustaw kolejność rozstawienia (R1 na górze) i wygeneruj drabinkę — każdy zespół
+                  gra dalej niezależnie od wyniku: zwycięzca awansuje w górę, przegrany do meczów o miejsca. Po wpisaniu
+                  wyniku kolejne mecze uzupełniają się same.
+                </div>
+                {teams.length !== (currentSeasonObj?.brSize || 0) ? (
+                  <div style={{ fontSize: 13, color: "var(--rust)" }}>
+                    Potrzebujesz dokładnie {currentSeasonObj?.brSize || "?"} drużyn, żeby wygenerować ten system (masz {teams.length}).
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14, maxWidth: 360 }}>
+                      {(seedOrder && seedOrder.length === teams.length ? seedOrder : teams.map((t) => t.id)).map((id, idx, arr) => (
+                        <div key={id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #DFD8C8", borderRadius: 8, padding: "6px 10px" }}>
+                          <span className="vb-display" style={{ fontSize: 15, color: "var(--oak)", width: 20 }}>R{idx + 1}</span>
+                          <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{teamName(id)}</span>
+                          <button onClick={() => moveSeed(idx, -1)} disabled={idx === 0} style={{
+                            background: "none", border: "1px solid #C9C2B3", borderRadius: 6, padding: "2px 7px",
+                            cursor: idx === 0 ? "default" : "pointer", opacity: idx === 0 ? 0.4 : 1,
+                          }}>↑</button>
+                          <button onClick={() => moveSeed(idx, 1)} disabled={idx === arr.length - 1} style={{
+                            background: "none", border: "1px solid #C9C2B3", borderRadius: 6, padding: "2px 7px",
+                            cursor: idx === arr.length - 1 ? "default" : "pointer", opacity: idx === arr.length - 1 ? 0.4 : 1,
+                          }}>↓</button>
+                        </div>
+                      ))}
+                    </div>
+                    {bracketError && <div style={{ color: "var(--rust)", fontSize: 13, marginBottom: 8 }}>{bracketError}</div>}
+                    {matches.length > 0 && (
+                      <div style={{ fontSize: 13, color: "var(--rust)", marginBottom: 8 }}>
+                        Uwaga: to zastąpi obecną drabinkę ({matches.length} meczów) — wpisane wyniki zostaną utracone.
+                      </div>
+                    )}
+                    <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }} onClick={handleGenerateBrazylijski}>
+                      <Wand2 size={15} /> Wygeneruj system brazylijski
                     </button>
                   </>
                 )}
