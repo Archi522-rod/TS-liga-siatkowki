@@ -222,27 +222,38 @@ function formatDate(iso) {
   }
 }
 
-function setWinner(set) {
+function setWinner(set, pointsPerSet = 25, isDecider = false) {
   if (set.home === "" || set.away === "" || set.home == null || set.away == null) return null;
   const h = Number(set.home), a = Number(set.away);
   if (Number.isNaN(h) || Number.isNaN(a) || h === a) return null;
   if (Math.abs(h - a) < 2) return null; // set musi być wygrany różnicą min. 2 punktów, jak w siatkówce
+  // Set decydujący (tie-break) bywa grany do innej liczby punktów niż reszta
+  // (klasycznie 15 zamiast 25) — nie znamy dokładnej wartości dla tego sezonu,
+  // więc dla niego sprawdzamy tylko różnicę min. 2 pkt, bez progu pointsPerSet.
+  if (!isDecider && Math.max(h, a) < pointsPerSet) return null;
   return h > a ? "home" : "away";
 }
 
-// Zwraca true, gdy oba wyniki seta są wpisane, ale różnica jest mniejsza niż 2 punkty —
-// taki set jest nieprawidłowy i nie liczy się do wyniku meczu, dopóki nie zostanie poprawiony.
-function setInvalid(set) {
+// Zwraca true, gdy oba wyniki seta są wpisane, ale wynik jest nieprawidłowy —
+// różnica mniejsza niż 2 punkty ALBO (poza setem decydującym) zwycięzca nie
+// osiągnął progu punktowego ustawionego dla sezonu (np. 21:19 przy secie do
+// 25 pkt) — taki set nie liczy się do wyniku meczu, dopóki nie zostanie poprawiony.
+function setInvalid(set, pointsPerSet = 25, isDecider = false) {
   if (set.home === "" || set.away === "" || set.home == null || set.away == null) return false;
   const h = Number(set.home), a = Number(set.away);
   if (Number.isNaN(h) || Number.isNaN(a)) return false;
-  return Math.abs(h - a) < 2;
+  if (Math.abs(h - a) < 2) return true;
+  if (!isDecider && Math.max(h, a) < pointsPerSet) return true;
+  return false;
 }
 
-function matchOutcome(match, setsToWin = 3) {
+function matchOutcome(match, setsToWin = 3, pointsPerSet = 25) {
   let homeSets = 0, awaySets = 0, homePts = 0, awayPts = 0;
-  for (const s of match.sets || []) {
-    const w = setWinner(s);
+  const deciderIndex = setsToWin * 2 - 2; // pozycja (0-indeksowana) ostatniego możliwego seta
+  const sets = match.sets || [];
+  for (let i = 0; i < sets.length; i++) {
+    const s = sets[i];
+    const w = setWinner(s, pointsPerSet, i === deciderIndex);
     if (w === "home") homeSets++;
     if (w === "away") awaySets++;
     if (w) {
@@ -342,36 +353,43 @@ function generateRoundRobin(teamIds, doubleRound) {
   return rounds;
 }
 
-// Rozkłada mecze (ze wszystkich rund round-robina, w kolejności) na podane terminy —
-// każdy wyznaczony dzień dostaje dokładnie tyle meczów, ile ma zdefiniowanych slotów
-// (data + godzina + hala), a "kolejka" w harmonogramie odpowiada wyznaczonemu dniowi.
-// Dla każdego slotu bierzemy najwcześniejszy w kolejce mecz, którego obie drużyny nie
-// grają jeszcze tego dnia — więc żadna drużyna nie zagra dwa razy tego samego dnia,
-// a każdy dzień jest wypełniany w całości (np. 3 mecze: 2 na jednej hali, 1 na innej),
-// zgodnie z tym co zostało zaplanowane w sekcji terminów.
-// Mecze, których nie da się już nigdzie dopasować (zabrakło terminów/slotów), trafiają
-// do puli nierozplanowanych.
+// Wypełnia każdy wyznaczony dzień meczowy jego slotami, biorąc najbliższe
+// pasujące mecze z kolejki round-robina (tak, żeby żadna drużyna nie zagrała
+// dwa razy tego samego dnia). „Kolejka” w wyniku = numer wyznaczonego dnia
+// (kolejność dni z formularza), a NIE sztywna runda round-robina — dzięki
+// temu liczba kolejek w terminarzu odpowiada liczbie realnie zaplanowanych
+// dni meczowych, tak jak w przygotowanym wcześniej planie.
 function assignToDates(rounds, dateRows) {
+  // Spłaszcz wszystkie rundy round-robina w jedną kolejkę — kolejność rund
+  // to tylko preferowana kolejność wyboru (żeby mecze rozkładały się możliwie
+  // równomiernie), a nie sztywny podział na dni.
   const queue = [];
-  rounds.forEach((roundMatches) => roundMatches.forEach((m) => queue.push({ ...m })));
+  for (const roundMatches of rounds) {
+    for (const m of roundMatches) queue.push({ home: m.home, away: m.away });
+  }
 
   const scheduled = [];
+  let dayNumber = 0;
 
-  for (let d = 0; d < dateRows.length; d++) {
-    const date = dateRows[d].date;
-    const slots = dateRows[d].slots;
-    const usedToday = new Set();
-    for (const slot of slots) {
-      const idx = queue.findIndex((m) => !usedToday.has(m.home) && !usedToday.has(m.away));
-      if (idx === -1) break; // żaden pozostały mecz nie pasuje na ten dzień (konflikt drużyn)
-      const m = queue.splice(idx, 1)[0];
-      usedToday.add(m.home);
-      usedToday.add(m.away);
+  for (const row of dateRows) {
+    if (!row.slots || row.slots.length === 0) continue;
+    dayNumber++;
+    const playedToday = new Set();
+    for (const slot of row.slots) {
+      let foundIdx = -1;
+      for (let i = 0; i < queue.length; i++) {
+        const m = queue[i];
+        if (!playedToday.has(m.home) && !playedToday.has(m.away)) { foundIdx = i; break; }
+      }
+      if (foundIdx === -1) continue; // żaden pozostały mecz nie pasuje na ten slot (obie drużyny już dziś grają)
+      const [m] = queue.splice(foundIdx, 1);
+      playedToday.add(m.home);
+      playedToday.add(m.away);
       scheduled.push({
         home: m.home,
         away: m.away,
-        round: d + 1,
-        date,
+        round: dayNumber,
+        date: row.date,
         time: slot.time || "",
         venue: slot.venue || "",
       });
@@ -477,7 +495,7 @@ function generateBracketMatches(seedTeamIds) {
 
 // Wynik meczu drabinki: jeśli jedna strona to wolny los (brak drużyny), mecz jest
 // automatycznie rozstrzygnięty bez rozgrywania.
-function bracketMatchOutcome(match, setsToWin = 3) {
+function bracketMatchOutcome(match, setsToWin = 3, pointsPerSet = 25) {
   const allowBye = !(match.bracket && match.bracket.noBye);
   if (allowBye) {
     const homeIsBye = !match.homeId;
@@ -490,7 +508,7 @@ function bracketMatchOutcome(match, setsToWin = 3) {
     // prostu, że poprzedni mecz jeszcze nie wyłonił zwycięzcy/przegranego.
     return { played: false, winner: null, loser: null };
   }
-  const o = matchOutcome(match, setsToWin);
+  const o = matchOutcome(match, setsToWin, pointsPerSet);
   if (!o.played) return { played: false, winner: null, loser: null };
   return {
     played: true,
@@ -502,7 +520,7 @@ function bracketMatchOutcome(match, setsToWin = 3) {
 
 // Po każdej zmianie wyniku „przepycha" zwycięzców (i przegranych półfinałów do
 // meczu o 3. miejsce) do kolejnych rund drabinki.
-function advanceBracket(allMatches, setsToWin = 3) {
+function advanceBracket(allMatches, setsToWin = 3, pointsPerSet = 25) {
   const byId = {};
   for (const m of allMatches) byId[m.id] = m;
   let changed = true;
@@ -512,7 +530,7 @@ function advanceBracket(allMatches, setsToWin = 3) {
     guard++;
     for (const m of allMatches) {
       if (!m.bracket) continue;
-      const o = bracketMatchOutcome(m, setsToWin);
+      const o = bracketMatchOutcome(m, setsToWin, pointsPerSet);
       if (!o.played) continue;
       if (m.bracket.nextMatchId) {
         const next = byId[m.bracket.nextMatchId];
@@ -744,12 +762,12 @@ function generateBrazylijskiMatches(seedTeamIds, size) {
   return matches;
 }
 
-// Pełny graf systemu brazylijskiego (opcjonalny widok, obok prostszych kolumn) —
-// każdy mecz jako "pudełko" z dwiema drużynami, a strzałki pokazują skąd biorą
-// się kolejni rywale (zwycięzca/przegrany poprzedniego meczu). Odpowiednik
-// oryginalnego grafu SVG, przestylowany na kolory Ligi Siatkówki.
-function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
-  const colW = 190, colGap = 55, rowH = 64, rowGap = 24, marginX = 24, marginTop = 34;
+// Wspólny hak: mierzy dostępny rozmiar kontenera (szerokość + to, co zostało
+// do dołu ekranu) i wylicza skalę potrzebną, żeby treść o wymiarach
+// contentWidth x contentHeight zmieściła się bez przewijania. Checkbox
+// "fitToScreen" pozwala to wyłączyć. Używany przez BrazylijskiGraphSVG i
+// RundyColumnsView, żeby nie duplikować pomiaru DOM w dwóch miejscach.
+function useFitToScreen(contentWidth, contentHeight) {
   const containerRef = useRef(null);
   const [fitToScreen, setFitToScreen] = useState(true);
   const [containerWidth, setContainerWidth] = useState(null);
@@ -769,6 +787,23 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
     window.addEventListener("resize", update);
     return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", update); };
   }, []);
+
+  const scale = fitToScreen && containerWidth
+    ? Math.min(1, containerWidth / contentWidth, availableHeight ? availableHeight / contentHeight : 1)
+    : 1;
+
+  return { containerRef, scale, fitToScreen, setFitToScreen };
+}
+
+// Pełny graf systemu brazylijskiego (opcjonalny widok, obok prostszych kolumn) —
+// każdy mecz jako "pudełko" z dwiema drużynami, a strzałki pokazują skąd biorą
+// się kolejni rywale (zwycięzca/przegrany poprzedniego meczu). Odpowiednik
+// oryginalnego grafu SVG, przestylowany na kolory Ligi Siatkówki.
+function BrazylijskiGraphSVG({ matches, teamName, setsToWin, pointsPerSet }) {
+  const colW = 190, colGap = 55, rowH = 64, rowGap = 24, marginX = 24, marginTop = 34;
+  const svgRef = useRef(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState("");
 
   const byId = {};
   matches.forEach((m) => { byId[m.id] = m; });
@@ -790,12 +825,11 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
     });
   });
 
-  if (depths.length === 0) return null;
-  const svgWidth = marginX * 2 + depths.length * colW + (depths.length - 1) * colGap;
+  const svgWidth = marginX * 2 + depths.length * colW + Math.max(0, depths.length - 1) * colGap;
   const svgHeight = marginTop + maxRows * (rowH + rowGap);
-  const scale = fitToScreen && containerWidth
-    ? Math.min(1, containerWidth / svgWidth, availableHeight ? availableHeight / svgHeight : 1)
-    : 1;
+  const { containerRef, scale, fitToScreen, setFitToScreen } = useFitToScreen(svgWidth, svgHeight);
+
+  if (depths.length === 0) return null;
 
   const edges = [];
   matches.forEach((m) => {
@@ -807,15 +841,85 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
     }
   });
 
+  // Eksportuje aktualnie widoczny graf do pliku PNG: klonuje węzeł <svg>,
+  // dopisuje wartości zmiennych CSS (var(--oak) itd. nie zadziała w
+  // samodzielnym, odłączonym SVG), serializuje do obrazka i rysuje na
+  // canvasie w podwójnej rozdzielczości, po czym zapisuje jako plik.
+  function exportGraphPng() {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    setExporting(true);
+    setExportMsg("Przygotowuję obraz…");
+    try {
+      const scaleFactor = 2;
+      const clone = svgEl.cloneNode(true);
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+      const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+      style.textContent = ":root{--navy:#16303D;--oak:#C99A5B;--grey:#7C8B90;}";
+      clone.insertBefore(style, clone.firstChild);
+
+      const svgStr = new XMLSerializer().serializeToString(clone);
+      const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = svgWidth * scaleFactor;
+        canvas.height = svgHeight * scaleFactor;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            setExportMsg("Nie udało się wygenerować pliku PNG.");
+            setExporting(false);
+            return;
+          }
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "graf-systemu-brazylijskiego.png";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+          setExportMsg("Pobrano graf jako PNG.");
+          setExporting(false);
+        }, "image/png");
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        setExportMsg("Nie udało się wygenerować pliku PNG.");
+        setExporting(false);
+      };
+      img.src = url;
+    } catch (e) {
+      setExportMsg("Nie udało się wygenerować pliku PNG.");
+      setExporting(false);
+    }
+  }
+
   return (
     <div>
-      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--grey)", marginBottom: 8, cursor: "pointer" }}>
-        <input type="checkbox" checked={fitToScreen} onChange={(e) => setFitToScreen(e.target.checked)} />
-        Dopasuj graf do rozmiaru ekranu
-      </label>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--grey)", cursor: "pointer" }}>
+          <input type="checkbox" checked={fitToScreen} onChange={(e) => setFitToScreen(e.target.checked)} />
+          Dopasuj graf do rozmiaru ekranu
+        </label>
+        <button className="vb-btn" disabled={exporting} onClick={exportGraphPng} style={{
+          background: "none", border: "1px solid #C9C2B3", color: "var(--navy)", fontSize: 12, padding: "5px 10px",
+          opacity: exporting ? 0.6 : 1, cursor: exporting ? "default" : "pointer",
+        }}>
+          ⬇ {exporting ? "Generuję…" : "Pobierz jako PNG"}
+        </button>
+        {exportMsg && <span style={{ fontSize: 12, color: "var(--grey)" }}>{exportMsg}</span>}
+      </div>
       <div ref={containerRef} style={{ overflowX: scale < 1 ? "hidden" : "auto", paddingBottom: 12, width: "100%" }}>
         <div style={{ width: svgWidth * scale, height: svgHeight * scale }}>
-          <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          <svg ref={svgRef} width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}
             style={{ display: "block", transform: `scale(${scale})`, transformOrigin: "top left" }}>
         <defs>
           <marker id="br-graf-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -862,8 +966,8 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
           if (!p) return null;
           const isFinal = m.round === "Finał";
           const isThird = m.round === "Mecz o 3. miejsce";
-          const o = matchOutcome(m, setsToWin);
-          const bo = bracketMatchOutcome(m, setsToWin);
+          const o = matchOutcome(m, setsToWin, pointsPerSet);
+          const bo = bracketMatchOutcome(m, setsToWin, pointsPerSet);
           return (
             <g key={m.id}>
               <rect x={p.x} y={p.y} width={colW} height={rowH} rx={10}
@@ -896,40 +1000,15 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
   );
 }
 
-// Widok "Rundy" (kolumny) — ten sam mechanizm dopasowania do rozmiaru ekranu
-// co w BrazylijskiGraphSVG: wymiary treści liczone ANALITYCZNIE (z liczby rund
-// i maksymalnej liczby meczów w rundzie), a nie mierzone asynchronicznie przez
-// ref/ResizeObserver — dzięki temu skala jest znana już przy pierwszym renderze
-// i nie zależy od zawodnego pomiaru DOM.
-function RundyColumnsView({ rounds, matches, teamName, setsToWin, matchOutcome, bracketMatchOutcome }) {
+// Widok "Rundy" (kolumny) — korzysta z tego samego haka useFitToScreen co
+// BrazylijskiGraphSVG, więc wymiary treści liczone są analitycznie (z liczby
+// rund i maksymalnej liczby meczów w rundzie) zamiast duplikować pomiar DOM.
+function RundyColumnsView({ rounds, matches, teamName, setsToWin, pointsPerSet, matchOutcome, bracketMatchOutcome }) {
   const colW = 190, colGap = 18, rowH = 58, rowGap = 30, titleH = 34;
-  const containerRef = useRef(null);
-  const [fitToScreen, setFitToScreen] = useState(true);
-  const [containerWidth, setContainerWidth] = useState(null);
-  const [availableHeight, setAvailableHeight] = useState(null);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const update = () => {
-      setContainerWidth(el.clientWidth);
-      const top = el.getBoundingClientRect().top;
-      setAvailableHeight(Math.max(240, window.innerHeight - top - 24));
-    };
-    update();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
-    if (ro) ro.observe(el);
-    window.addEventListener("resize", update);
-    return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", update); };
-  }, []);
-
   const maxRows = rounds.reduce((max, round) => Math.max(max, matches.filter((m) => m.round === round).length), 0);
   const contentWidth = rounds.length * colW + Math.max(0, rounds.length - 1) * colGap;
   const contentHeight = titleH + (maxRows > 0 ? maxRows * rowH + Math.max(0, maxRows - 1) * rowGap : 0);
-
-  const scale = fitToScreen && containerWidth
-    ? Math.min(1, containerWidth / contentWidth, availableHeight ? availableHeight / contentHeight : 1)
-    : 1;
+  const { containerRef, scale, fitToScreen, setFitToScreen } = useFitToScreen(contentWidth, contentHeight);
 
   return (
     <div>
@@ -947,8 +1026,8 @@ function RundyColumnsView({ rounds, matches, teamName, setsToWin, matchOutcome, 
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: rowGap, justifyContent: "center", height: "100%" }}>
                   {matches.filter((m) => m.round === round).map((m) => {
-                    const o = matchOutcome(m, setsToWin);
-                    const bo = bracketMatchOutcome(m, setsToWin);
+                    const o = matchOutcome(m, setsToWin, pointsPerSet);
+                    const bo = bracketMatchOutcome(m, setsToWin, pointsPerSet);
                     return (
                       <div key={m.id} style={{
                         background: "#fff", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px", boxShadow: "var(--shadow-sm)",
@@ -1339,7 +1418,7 @@ export default function VolleyballLeagueApp() {
       sets[setIndex] = { ...sets[setIndex], [side]: clean };
       return { ...m, sets };
     });
-    if (next.some((m) => m.bracket)) next = advanceBracket(next, currentSeasonObj?.setsToWin || 3);
+    if (next.some((m) => m.bracket)) next = advanceBracket(next, currentSeasonObj?.setsToWin || 3, currentSeasonObj?.pointsPerSet || 25);
     saveMatches(next);
   }
 
@@ -1356,7 +1435,7 @@ export default function VolleyballLeagueApp() {
     setBracketError("");
     const order = seedOrder && seedOrder.length === teams.length ? seedOrder : teams.map((t) => t.id);
     if (order.length < 2) { setBracketError("Potrzebujesz co najmniej 2 drużyn."); return; }
-    saveMatches(advanceBracket(generateBracketMatches(order), currentSeasonObj?.setsToWin || 3));
+    saveMatches(advanceBracket(generateBracketMatches(order), currentSeasonObj?.setsToWin || 3, currentSeasonObj?.pointsPerSet || 25));
     setConfirmRegenerate(false);
   }
 
@@ -1369,7 +1448,7 @@ export default function VolleyballLeagueApp() {
       setBracketError(`System brazylijski na ${size} drużyn wymaga dokładnie ${size} drużyn (masz ${order.length}).`);
       return;
     }
-    saveMatches(advanceBracket(generateBrazylijskiMatches(order, size), currentSeasonObj?.setsToWin || 3));
+    saveMatches(advanceBracket(generateBrazylijskiMatches(order, size), currentSeasonObj?.setsToWin || 3, currentSeasonObj?.pointsPerSet || 25));
     setConfirmRegenerate(false);
   }
 
@@ -1429,10 +1508,7 @@ export default function VolleyballLeagueApp() {
     const rowsForAssign = validRows.map((r) => ({ date: r.date.trim(), slots: r.slots.map((s) => ({ time: s.time, venue: s.venue || defaultVenueName })) }));
     const { scheduled, unscheduled } = assignToDates(rounds, rowsForAssign);
     const conflictCount = Object.keys(findVenueConflicts(scheduled.map((m, i) => ({ ...m, id: String(i) })))).length;
-    // "Kolejka" w podglądzie = liczba wyznaczonych dni meczowych faktycznie wykorzystanych
-    // (nie teoretyczna liczba rund round-robina), bo tak grupujemy mecze po zmianie na terminarz dzienny.
-    const matchDaysUsed = new Set(scheduled.map((m) => m.date)).size;
-    setGenPreview({ scheduled, unscheduledCount: unscheduled, totalMatches, roundsCount: matchDaysUsed, conflictCount });
+    setGenPreview({ scheduled, unscheduledCount: unscheduled, totalMatches, roundsCount: validRows.length, conflictCount });
   }
 
   function handleConfirmGenerate() {
@@ -1562,7 +1638,7 @@ export default function VolleyballLeagueApp() {
     }
     return Number(a) - Number(b);
   });
-  const activeRound = rounds.find((r) => matches.some((m) => m.round === r && !matchOutcome(m, currentSeasonObj?.setsToWin || 3).played));
+  const activeRound = rounds.find((r) => matches.some((m) => m.round === r && !matchOutcome(m, currentSeasonObj?.setsToWin || 3, currentSeasonObj?.pointsPerSet || 25).played));
 
   if (loading) {
     return (
@@ -1661,13 +1737,14 @@ export default function VolleyballLeagueApp() {
                   </div>
                 )}
                 {isBrazylijski && bracketViewMode === "graf" ? (
-                  <BrazylijskiGraphSVG matches={matches} teamName={teamName} setsToWin={currentSeasonObj?.setsToWin || 3} />
+                  <BrazylijskiGraphSVG matches={matches} teamName={teamName} setsToWin={currentSeasonObj?.setsToWin || 3} pointsPerSet={currentSeasonObj?.pointsPerSet || 25} />
                 ) : (
                 <RundyColumnsView
                   rounds={rounds}
                   matches={matches}
                   teamName={teamName}
                   setsToWin={currentSeasonObj?.setsToWin || 3}
+                  pointsPerSet={currentSeasonObj?.pointsPerSet || 25}
                   matchOutcome={matchOutcome}
                   bracketMatchOutcome={bracketMatchOutcome}
                 />
@@ -1675,8 +1752,8 @@ export default function VolleyballLeagueApp() {
                 {(() => {
                   const finalMatch = matches.find((m) => m.round === "Finał");
                   const bronzeMatch = matches.find((m) => m.round === "Mecz o 3. miejsce");
-                  const finalOutcome = finalMatch ? bracketMatchOutcome(finalMatch, currentSeasonObj?.setsToWin || 3) : null;
-                  const bronzeOutcome = bronzeMatch ? bracketMatchOutcome(bronzeMatch, currentSeasonObj?.setsToWin || 3) : null;
+                  const finalOutcome = finalMatch ? bracketMatchOutcome(finalMatch, currentSeasonObj?.setsToWin || 3, currentSeasonObj?.pointsPerSet || 25) : null;
+                  const bronzeOutcome = bronzeMatch ? bracketMatchOutcome(bronzeMatch, currentSeasonObj?.setsToWin || 3, currentSeasonObj?.pointsPerSet || 25) : null;
                   if (!finalOutcome?.played) return null;
                   return (
                     <div style={{ marginTop: 22, textAlign: "center" }}>
@@ -1780,7 +1857,7 @@ export default function VolleyballLeagueApp() {
                     .slice()
                     .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.venue || "").localeCompare(b.venue || "") || (a.time || "").localeCompare(b.time || ""))
                     .map((m) => {
-                    const o = matchOutcome(m, currentSeasonObj?.setsToWin || 3);
+                    const o = matchOutcome(m, currentSeasonObj?.setsToWin || 3, currentSeasonObj?.pointsPerSet || 25);
                     return (
                       <div key={m.id} className="vb-match-card">
                         <div className="vb-match-info">
@@ -2095,8 +2172,9 @@ export default function VolleyballLeagueApp() {
                       .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.venue || "").localeCompare(b.venue || "") || (a.time || "").localeCompare(b.time || ""))
                       .map((m) => {
                     const setsToWin = currentSeasonObj?.setsToWin || 3;
+                    const pointsPerSet = currentSeasonObj?.pointsPerSet || 25;
                     const maxSets = setsToWin * 2 - 1;
-                    const o = matchOutcome(m, setsToWin);
+                    const o = matchOutcome(m, setsToWin, pointsPerSet);
                     const hasConflict = Boolean(venueConflicts[m.id]);
                     const sets = [...(m.sets || [])];
                     while (sets.length < maxSets) sets.push({ home: "", away: "" });
@@ -2175,7 +2253,7 @@ export default function VolleyballLeagueApp() {
                                 </span>
                               </div>
                               {sets.map((s, i) => {
-                                const invalid = setInvalid(s);
+                                const invalid = setInvalid(s, pointsPerSet, i === maxSets - 1);
                                 return (
                                   <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
                                     <input className="vb-score-input" style={invalid ? { borderColor: "var(--rust)" } : undefined} value={s.home}
@@ -2186,9 +2264,9 @@ export default function VolleyballLeagueApp() {
                                 );
                               })}
                             </div>
-                            {sets.some((s) => setInvalid(s)) && (
-                              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--rust)", maxWidth: 160 }}>
-                                <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Różnica musi wynosić min. 2 pkt — set się nie liczy.
+                            {sets.some((s, i) => setInvalid(s, pointsPerSet, i === maxSets - 1)) && (
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--rust)", maxWidth: 200 }}>
+                                <AlertTriangle size={12} style={{ flexShrink: 0 }} /> Różnica musi wynosić min. 2 pkt, a zwycięzca osiągnąć {pointsPerSet} pkt (poza ew. setem decydującym) — set się nie liczy.
                               </div>
                             )}
                           </div>
@@ -2715,6 +2793,7 @@ export default function VolleyballLeagueApp() {
           teams={teams}
           seasonName={currentSeasonName}
           setsToWin={currentSeasonObj?.setsToWin || 3}
+          pointsPerSet={currentSeasonObj?.pointsPerSet || 25}
           onClose={() => setPrintMatchId(null)}
         />
       )}
@@ -2874,9 +2953,9 @@ function SchedulePoster({ matches, teams, rounds, seasonName, isBracketStyle, on
   );
 }
 
-function MatchProtocol({ match, teams, seasonName, setsToWin = 3, onClose }) {
+function MatchProtocol({ match, teams, seasonName, setsToWin = 3, pointsPerSet = 25, onClose }) {
   const teamName = (id) => teams.find((t) => t.id === id)?.name || "—";
-  const o = matchOutcome(match, setsToWin);
+  const o = matchOutcome(match, setsToWin, pointsPerSet);
   const maxSets = setsToWin * 2 - 1;
   const sets = [...(match.sets || [])];
   while (sets.length < maxSets) sets.push({ home: "", away: "" });
