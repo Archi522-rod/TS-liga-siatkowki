@@ -342,46 +342,43 @@ function generateRoundRobin(teamIds, doubleRound) {
   return rounds;
 }
 
-// Rozkłada kolejki na podane terminy (data + konkretne sloty godzinowe, każdy z przypisaną halą
-// wybraną z listy hal zdefiniowanych dla sezonu).
-// Kolejka może zostać rozbita na kilka dat, ale nigdy nie miesza dwóch kolejek w jednej dacie,
-// więc żadna drużyna nie zagra dwa razy tego samego dnia.
-// Mecze, dla których zabraknie wolnych slotów, trafiają do puli nierozplanowanych.
+// Rozkłada mecze (ze wszystkich rund round-robina, w kolejności) na podane terminy —
+// każdy wyznaczony dzień dostaje dokładnie tyle meczów, ile ma zdefiniowanych slotów
+// (data + godzina + hala), a "kolejka" w harmonogramie odpowiada wyznaczonemu dniowi.
+// Dla każdego slotu bierzemy najwcześniejszy w kolejce mecz, którego obie drużyny nie
+// grają jeszcze tego dnia — więc żadna drużyna nie zagra dwa razy tego samego dnia,
+// a każdy dzień jest wypełniany w całości (np. 3 mecze: 2 na jednej hali, 1 na innej),
+// zgodnie z tym co zostało zaplanowane w sekcji terminów.
+// Mecze, których nie da się już nigdzie dopasować (zabrakło terminów/slotów), trafiają
+// do puli nierozplanowanych.
 function assignToDates(rounds, dateRows) {
-  const rows = dateRows.map((r) => ({
-    date: r.date,
-    pool: [...r.slots],
-  }));
+  const queue = [];
+  rounds.forEach((roundMatches) => roundMatches.forEach((m) => queue.push({ ...m })));
+
   const scheduled = [];
-  let rowIdx = 0;
-  let unscheduled = 0;
 
-  function advance() {
-    while (rowIdx < rows.length) {
-      if (rows[rowIdx].pool.length > 0) return true;
-      rowIdx++;
-    }
-    return false;
-  }
-
-  for (let r = 0; r < rounds.length; r++) {
-    let remaining = [...rounds[r]];
-    while (remaining.length > 0) {
-      if (!advance()) { unscheduled += remaining.length; break; }
-      const row = rows[rowIdx];
-      const slot = row.pool.shift();
-      const m = remaining.shift();
+  for (let d = 0; d < dateRows.length; d++) {
+    const date = dateRows[d].date;
+    const slots = dateRows[d].slots;
+    const usedToday = new Set();
+    for (const slot of slots) {
+      const idx = queue.findIndex((m) => !usedToday.has(m.home) && !usedToday.has(m.away));
+      if (idx === -1) break; // żaden pozostały mecz nie pasuje na ten dzień (konflikt drużyn)
+      const m = queue.splice(idx, 1)[0];
+      usedToday.add(m.home);
+      usedToday.add(m.away);
       scheduled.push({
         home: m.home,
         away: m.away,
-        round: r + 1,
-        date: row.date,
+        round: d + 1,
+        date,
         time: slot.time || "",
         venue: slot.venue || "",
       });
     }
   }
-  return { scheduled, unscheduled };
+
+  return { scheduled, unscheduled: queue.length };
 }
 
 // ---- TURNIEJ JEDNODNIOWY (drabinka pucharowa, tzw. „system brazylijski") ----
@@ -1432,7 +1429,10 @@ export default function VolleyballLeagueApp() {
     const rowsForAssign = validRows.map((r) => ({ date: r.date.trim(), slots: r.slots.map((s) => ({ time: s.time, venue: s.venue || defaultVenueName })) }));
     const { scheduled, unscheduled } = assignToDates(rounds, rowsForAssign);
     const conflictCount = Object.keys(findVenueConflicts(scheduled.map((m, i) => ({ ...m, id: String(i) })))).length;
-    setGenPreview({ scheduled, unscheduledCount: unscheduled, totalMatches, roundsCount: rounds.length, conflictCount });
+    // "Kolejka" w podglądzie = liczba wyznaczonych dni meczowych faktycznie wykorzystanych
+    // (nie teoretyczna liczba rund round-robina), bo tak grupujemy mecze po zmianie na terminarz dzienny.
+    const matchDaysUsed = new Set(scheduled.map((m) => m.date)).size;
+    setGenPreview({ scheduled, unscheduledCount: unscheduled, totalMatches, roundsCount: matchDaysUsed, conflictCount });
   }
 
   function handleConfirmGenerate() {
