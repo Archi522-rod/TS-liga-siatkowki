@@ -172,6 +172,26 @@ const LEGACY_TEAMS_KEY = "vb-teams";
 const LEGACY_MATCHES_KEY = "vb-matches";
 const SEASONS_KEY = "vb-seasons";
 const CURRENT_SEASON_KEY = "vb-current-season";
+const ADMIN_SESSION_KEY = "vb-admin-session";
+
+// Trzyma login/hasło administratora w sessionStorage (znika po zamknięciu karty,
+// ale przetrwa odświeżenie strony) — żeby nie trzeba było logować się od nowa
+// przy każdym F5 podczas wpisywania wyników.
+function saveAdminSession(username, password) {
+  try { sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ username, password })); } catch (e) { /* prywatna karta / brak storage */ }
+}
+function loadAdminSession() {
+  try {
+    const raw = sessionStorage.getItem(ADMIN_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.username || !parsed?.password) return null;
+    return parsed;
+  } catch (e) { return null; }
+}
+function clearAdminSession() {
+  try { sessionStorage.removeItem(ADMIN_SESSION_KEY); } catch (e) { /* ignoruj */ }
+}
 
 const teamsKey = (seasonId) => `vb-teams-${seasonId}`;
 const matchesKey = (seasonId) => `vb-matches-${seasonId}`;
@@ -983,8 +1003,11 @@ export default function VolleyballLeagueApp() {
   const [seedOrder, setSeedOrder] = useState(null);
   const [bracketViewMode, setBracketViewMode] = useState("kolumny"); // "kolumny" | "graf" (tylko system brazylijski)
   const [bracketError, setBracketError] = useState("");
+  const [confirmRegenerate, setConfirmRegenerate] = useState(false);
   const [seasonError, setSeasonError] = useState("");
   const [confirmDeleteSeasonId, setConfirmDeleteSeasonId] = useState(null);
+  const [confirmDeleteMatchId, setConfirmDeleteMatchId] = useState(null);
+  const [confirmDeleteTeamId, setConfirmDeleteTeamId] = useState(null);
 
   const [accountsExist, setAccountsExist] = useState(null); // null=unknown
   const [unlocked, setUnlocked] = useState(false);
@@ -1004,6 +1027,7 @@ export default function VolleyballLeagueApp() {
   const [changeOwnPassMsg, setChangeOwnPassMsg] = useState("");
 
   const [newTeamName, setNewTeamName] = useState("");
+  const [teamError, setTeamError] = useState("");
   const [newMatch, setNewMatch] = useState({ round: "1", date: "", time: "", venue: "", homeId: "", awayId: "" });
 
   const [dateRows, setDateRows] = useState([{ id: uid(), date: "", slots: [{ id: uid(), time: "", venue: "" }] }]);
@@ -1084,6 +1108,24 @@ export default function VolleyballLeagueApp() {
         try {
           const exists = await adminAuth.accountsExist();
           setAccountsExist(exists);
+          if (exists) {
+            const saved = loadAdminSession();
+            if (saved) {
+              try {
+                const ok = await adminAuth.login(saved.username, saved.password);
+                if (ok) {
+                  setSessionUsername(saved.username);
+                  setSessionPassword(saved.password);
+                  setUnlocked(true);
+                  fetchAccounts(saved.username, saved.password);
+                } else {
+                  clearAdminSession();
+                }
+              } catch (e) {
+                clearAdminSession();
+              }
+            }
+          }
         } catch (e) {
           setAccountsExist(false);
         }
@@ -1119,6 +1161,8 @@ export default function VolleyballLeagueApp() {
       if (r) a = JSON.parse(r.value);
     } catch (e) { /* brak ogłoszeń */ }
     setAnnouncements(a);
+    setConfirmRegenerate(false);
+    setSeedOrder(null);
   }
 
   async function createSeason() {
@@ -1236,6 +1280,11 @@ export default function VolleyballLeagueApp() {
   function addTeam() {
     const name = newTeamName.trim();
     if (!name) return;
+    if (teams.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+      setTeamError("Drużyna o tej nazwie już jest na liście.");
+      return;
+    }
+    setTeamError("");
     saveTeams([...teams, { id: uid(), name }]);
     setNewTeamName("");
   }
@@ -1243,6 +1292,7 @@ export default function VolleyballLeagueApp() {
   function deleteTeam(id) {
     saveTeams(teams.filter((t) => t.id !== id));
     saveMatches(matches.filter((m) => m.homeId !== id && m.awayId !== id));
+    setConfirmDeleteTeamId(null);
   }
 
   function addVenue() {
@@ -1275,6 +1325,7 @@ export default function VolleyballLeagueApp() {
 
   function deleteMatch(id) {
     saveMatches(matches.filter((m) => m.id !== id));
+    setConfirmDeleteMatchId(null);
   }
 
   function updateMatchField(matchId, field, value) {
@@ -1309,6 +1360,7 @@ export default function VolleyballLeagueApp() {
     const order = seedOrder && seedOrder.length === teams.length ? seedOrder : teams.map((t) => t.id);
     if (order.length < 2) { setBracketError("Potrzebujesz co najmniej 2 drużyn."); return; }
     saveMatches(advanceBracket(generateBracketMatches(order), currentSeasonObj?.setsToWin || 3));
+    setConfirmRegenerate(false);
   }
 
   function handleGenerateBrazylijski() {
@@ -1321,6 +1373,7 @@ export default function VolleyballLeagueApp() {
       return;
     }
     saveMatches(advanceBracket(generateBrazylijskiMatches(order, size), currentSeasonObj?.setsToWin || 3));
+    setConfirmRegenerate(false);
   }
 
   function addDateRow() {
@@ -1402,6 +1455,7 @@ export default function VolleyballLeagueApp() {
       setSessionUsername(loginUsername.trim());
       setSessionPassword(passInput);
       setUnlocked(true);
+      saveAdminSession(loginUsername.trim(), passInput);
       fetchAccounts(loginUsername.trim(), passInput);
       setLoginUsername(""); setPassInput(""); setPassInput2("");
     } catch (e) {
@@ -1418,6 +1472,7 @@ export default function VolleyballLeagueApp() {
         setSessionUsername(loginUsername.trim());
         setSessionPassword(passInput);
         setUnlocked(true);
+        saveAdminSession(loginUsername.trim(), passInput);
         fetchAccounts(loginUsername.trim(), passInput);
         setLoginUsername(""); setPassInput("");
       } else {
@@ -1473,6 +1528,7 @@ export default function VolleyballLeagueApp() {
     try {
       await adminAuth.changePassword(sessionUsername, sessionPassword, changeOwnPass);
       setSessionPassword(changeOwnPass);
+      saveAdminSession(sessionUsername, changeOwnPass);
       setChangeOwnPass("");
       setChangeOwnPassMsg("Hasło zmienione.");
     } catch (e) {
@@ -1485,6 +1541,7 @@ export default function VolleyballLeagueApp() {
     setSessionUsername("");
     setSessionPassword("");
     setAdminAccounts([]);
+    clearAdminSession();
   }
 
   const teamName = (id) => teams.find((t) => t.id === id)?.name || "?";
@@ -2155,9 +2212,21 @@ export default function VolleyballLeagueApp() {
                           <button onClick={() => setPrintMatchId(m.id)} title="Drukuj protokół meczowy" style={{ background: "none", border: "1px solid #C9C2B3", borderRadius: 8, cursor: "pointer", color: "var(--navy)", display: "flex", alignItems: "center", gap: 4, fontSize: 12, padding: "4px 8px" }}>
                             <Printer size={14} /> Protokół
                           </button>
-                          <button onClick={() => deleteMatch(m.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
-                            <Trash2 size={15} />
-                          </button>
+                          {confirmDeleteMatchId === m.id ? (
+                            <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+                              <span style={{ color: "var(--rust)" }}>Usunąć mecz?</span>
+                              <button className="vb-btn" style={{ background: "var(--rust)", color: "#fff", fontSize: 12, padding: "4px 8px" }} onClick={() => deleteMatch(m.id)}>
+                                Tak, usuń
+                              </button>
+                              <button className="vb-btn" style={{ background: "none", border: "1px solid #C9C2B3", color: "var(--navy)", fontSize: 12, padding: "4px 8px" }} onClick={() => setConfirmDeleteMatchId(null)}>
+                                Anuluj
+                              </button>
+                            </span>
+                          ) : (
+                            <button onClick={() => setConfirmDeleteMatchId(m.id)} title="Usuń mecz" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -2174,30 +2243,48 @@ export default function VolleyballLeagueApp() {
                   System brazylijski na {currentSeasonObj?.brSize || "?"} drużyn wymaga dokładnie tylu drużyn — obecnie masz {teams.length}.
                 </div>
               )}
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                 <input className="vb-input" placeholder="Nazwa nowej drużyny" value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
+                  onChange={(e) => { setNewTeamName(e.target.value); if (teamError) setTeamError(""); }}
                   onKeyDown={(e) => e.key === "Enter" && addTeam()}
                   style={{ flex: 1 }} />
                 <button className="vb-btn" style={{ background: "var(--oak)", color: "#fff", display: "flex", alignItems: "center", gap: 4 }} onClick={addTeam}>
                   <Plus size={15} /> Dodaj
                 </button>
               </div>
+              {teamError && <div style={{ fontSize: 12, color: "var(--rust)", marginBottom: 8 }}>{teamError}</div>}
               {teams.length === 0 ? (
                 <div style={{ fontSize: 13, color: "var(--grey)" }}>Brak drużyn.</div>
               ) : (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {teams.map((t) => (
-                    <div key={t.id} style={{
-                      display: "flex", alignItems: "center", gap: 8, background: "#fff",
-                      border: "1px solid #DFD8C8", borderRadius: 8, padding: "6px 10px", fontSize: 13,
-                    }}>
-                      {t.name}
-                      <button onClick={() => deleteTeam(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
+                  {teams.map((t) => {
+                    const teamMatchCount = matches.filter((m) => m.homeId === t.id || m.awayId === t.id).length;
+                    return (
+                      <div key={t.id} style={{
+                        display: "flex", alignItems: "center", gap: 8, background: "#fff",
+                        border: "1px solid #DFD8C8", borderRadius: 8, padding: "6px 10px", fontSize: 13,
+                      }}>
+                        {t.name}
+                        {confirmDeleteTeamId === t.id ? (
+                          <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+                            <span style={{ color: "var(--rust)" }}>
+                              {teamMatchCount > 0 ? `Usunie też ${teamMatchCount} mecz(y). Na pewno?` : "Na pewno usunąć?"}
+                            </span>
+                            <button className="vb-btn" style={{ background: "var(--rust)", color: "#fff", fontSize: 12, padding: "4px 8px" }} onClick={() => deleteTeam(t.id)}>
+                              Tak, usuń
+                            </button>
+                            <button className="vb-btn" style={{ background: "none", border: "1px solid #C9C2B3", color: "var(--navy)", fontSize: 12, padding: "4px 8px" }} onClick={() => setConfirmDeleteTeamId(null)}>
+                              Anuluj
+                            </button>
+                          </span>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteTeamId(t.id)} title="Usuń drużynę" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--rust)", display: "flex" }}>
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </Section>
@@ -2441,9 +2528,21 @@ export default function VolleyballLeagueApp() {
                         Uwaga: to zastąpi obecną drabinkę ({matches.length} meczów) — wpisane wyniki zostaną utracone.
                       </div>
                     )}
-                    <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }} onClick={handleGenerateBracket}>
-                      <Wand2 size={15} /> Wygeneruj drabinkę
-                    </button>
+                    {matches.length > 0 && confirmRegenerate ? (
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <button className="vb-btn" style={{ background: "var(--rust)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }} onClick={handleGenerateBracket}>
+                          <Wand2 size={15} /> Tak, generuj ponownie
+                        </button>
+                        <button className="vb-btn" style={{ background: "none", border: "1px solid #C9C2B3", color: "var(--navy)" }} onClick={() => setConfirmRegenerate(false)}>
+                          Anuluj
+                        </button>
+                      </span>
+                    ) : (
+                      <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }}
+                        onClick={() => matches.length > 0 ? setConfirmRegenerate(true) : handleGenerateBracket()}>
+                        <Wand2 size={15} /> Wygeneruj drabinkę
+                      </button>
+                    )}
                   </>
                 )}
               </Section>
@@ -2485,9 +2584,21 @@ export default function VolleyballLeagueApp() {
                         Uwaga: to zastąpi obecną drabinkę ({matches.length} meczów) — wpisane wyniki zostaną utracone.
                       </div>
                     )}
-                    <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }} onClick={handleGenerateBrazylijski}>
-                      <Wand2 size={15} /> Wygeneruj system brazylijski
-                    </button>
+                    {matches.length > 0 && confirmRegenerate ? (
+                      <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <button className="vb-btn" style={{ background: "var(--rust)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }} onClick={handleGenerateBrazylijski}>
+                          <Wand2 size={15} /> Tak, generuj ponownie
+                        </button>
+                        <button className="vb-btn" style={{ background: "none", border: "1px solid #C9C2B3", color: "var(--navy)" }} onClick={() => setConfirmRegenerate(false)}>
+                          Anuluj
+                        </button>
+                      </span>
+                    ) : (
+                      <button className="vb-btn" style={{ background: "var(--navy)", color: "#fff", display: "flex", alignItems: "center", gap: 6 }}
+                        onClick={() => matches.length > 0 ? setConfirmRegenerate(true) : handleGenerateBrazylijski()}>
+                        <Wand2 size={15} /> Wygeneruj system brazylijski
+                      </button>
+                    )}
                   </>
                 )}
               </Section>
@@ -2614,6 +2725,7 @@ export default function VolleyballLeagueApp() {
           teams={teams}
           rounds={rounds}
           seasonName={currentSeasonName}
+          isBracketStyle={isTournament || isBrazylijski}
           onClose={() => setPosterOpen(false)}
         />
       )}
@@ -2673,7 +2785,7 @@ function EmptyState({ text, icon: Icon = CalendarDays }) {
   );
 }
 
-function SchedulePoster({ matches, teams, rounds, seasonName, onClose }) {
+function SchedulePoster({ matches, teams, rounds, seasonName, isBracketStyle, onClose }) {
   const teamName = (id) => teams.find((t) => t.id === id)?.name || "—";
   const generatedAt = new Date().toLocaleDateString("pl-PL", { day: "numeric", month: "long", year: "numeric" });
 
@@ -2728,7 +2840,7 @@ function SchedulePoster({ matches, teams, rounds, seasonName, onClose }) {
                     display: "flex", alignItems: "center", gap: 10, marginBottom: 8,
                     borderBottom: "2px solid var(--oak)", paddingBottom: 4,
                   }}>
-                    <span className="vb-display" style={{ fontSize: 20, color: "var(--navy)" }}>KOLEJKA {round}</span>
+                    <span className="vb-display" style={{ fontSize: 20, color: "var(--navy)" }}>{isBracketStyle ? round : `KOLEJKA ${round}`}</span>
                   </div>
                   {roundMatches.map((m) => (
                     <div key={m.id} style={{
