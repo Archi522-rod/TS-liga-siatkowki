@@ -1778,7 +1778,7 @@ export default function VolleyballLeagueApp() {
                   {matches
                     .filter((m) => m.round === round)
                     .slice()
-                    .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""))
+                    .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.venue || "").localeCompare(b.venue || "") || (a.time || "").localeCompare(b.time || ""))
                     .map((m) => {
                     const o = matchOutcome(m, currentSeasonObj?.setsToWin || 3);
                     return (
@@ -2092,7 +2092,7 @@ export default function VolleyballLeagueApp() {
                     {matches
                       .filter((m) => m.round === round)
                       .slice()
-                      .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""))
+                      .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.venue || "").localeCompare(b.venue || "") || (a.time || "").localeCompare(b.time || ""))
                       .map((m) => {
                     const setsToWin = currentSeasonObj?.setsToWin || 3;
                     const maxSets = setsToWin * 2 - 1;
@@ -2832,7 +2832,7 @@ function SchedulePoster({ matches, teams, rounds, seasonName, isBracketStyle, on
               const roundMatches = matches
                 .filter((m) => m.round === round)
                 .slice()
-                .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.time || "").localeCompare(b.time || ""));
+                .sort((a, b) => (a.date || "").localeCompare(b.date || "") || (a.venue || "").localeCompare(b.venue || "") || (a.time || "").localeCompare(b.time || ""));
               if (roundMatches.length === 0) return null;
               return (
                 <div key={round} className="vb-poster-round" style={{ marginBottom: 20 }}>
