@@ -736,11 +736,16 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
   const containerRef = useRef(null);
   const [fitToScreen, setFitToScreen] = useState(true);
   const [containerWidth, setContainerWidth] = useState(null);
+  const [availableHeight, setAvailableHeight] = useState(null);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setContainerWidth(el.clientWidth);
+    const update = () => {
+      setContainerWidth(el.clientWidth);
+      const top = el.getBoundingClientRect().top;
+      setAvailableHeight(Math.max(240, window.innerHeight - top - 24));
+    };
     update();
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
     if (ro) ro.observe(el);
@@ -771,7 +776,9 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
   if (depths.length === 0) return null;
   const svgWidth = marginX * 2 + depths.length * colW + (depths.length - 1) * colGap;
   const svgHeight = marginTop + maxRows * (rowH + rowGap);
-  const scale = fitToScreen && containerWidth ? Math.min(1, containerWidth / svgWidth) : 1;
+  const scale = fitToScreen && containerWidth
+    ? Math.min(1, containerWidth / svgWidth, availableHeight ? availableHeight / svgHeight : 1)
+    : 1;
 
   const edges = [];
   matches.forEach((m) => {
@@ -787,7 +794,7 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
     <div>
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--grey)", marginBottom: 8, cursor: "pointer" }}>
         <input type="checkbox" checked={fitToScreen} onChange={(e) => setFitToScreen(e.target.checked)} />
-        Dopasuj graf do szerokości ekranu
+        Dopasuj graf do rozmiaru ekranu
       </label>
       <div ref={containerRef} style={{ overflowX: scale < 1 ? "hidden" : "auto", paddingBottom: 12, width: "100%" }}>
         <div style={{ width: svgWidth * scale, height: svgHeight * scale }}>
@@ -881,12 +888,17 @@ function RundyColumnsView({ rounds, matches, teamName, setsToWin, matchOutcome, 
   const contentRef = useRef(null);
   const [fitToScreen, setFitToScreen] = useState(true);
   const [containerWidth, setContainerWidth] = useState(null);
+  const [availableHeight, setAvailableHeight] = useState(null);
   const [contentSize, setContentSize] = useState({ width: null, height: null });
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setContainerWidth(el.clientWidth);
+    const update = () => {
+      setContainerWidth(el.clientWidth);
+      const top = el.getBoundingClientRect().top;
+      setAvailableHeight(Math.max(240, window.innerHeight - top - 24));
+    };
     update();
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
     if (ro) ro.observe(el);
@@ -905,13 +917,15 @@ function RundyColumnsView({ rounds, matches, teamName, setsToWin, matchOutcome, 
     return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", update); };
   }, [rounds.length, matches.length]);
 
-  const scale = fitToScreen && containerWidth && contentSize.width ? Math.min(1, containerWidth / contentSize.width) : 1;
+  const scale = fitToScreen && containerWidth && contentSize.width
+    ? Math.min(1, containerWidth / contentSize.width, availableHeight && contentSize.height ? availableHeight / contentSize.height : 1)
+    : 1;
 
   return (
     <div>
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--grey)", marginBottom: 8, cursor: "pointer" }}>
         <input type="checkbox" checked={fitToScreen} onChange={(e) => setFitToScreen(e.target.checked)} />
-        Dopasuj do szerokości ekranu
+        Dopasuj do rozmiaru ekranu
       </label>
       <div ref={containerRef} style={{ overflowX: scale < 1 ? "hidden" : "auto", paddingBottom: 12, width: "100%" }}>
         <div style={{ width: contentSize.width ? contentSize.width * scale : undefined, height: contentSize.height ? contentSize.height * scale : undefined }}>
@@ -1592,7 +1606,7 @@ export default function VolleyballLeagueApp() {
                       color: bracketViewMode === "graf" ? "#fff" : "var(--navy)",
                       border: "1px solid var(--navy)", fontSize: 13,
                     }}>
-                      Graf systemu brazylijskiego
+                      Graf systemu
                     </button>
                   </div>
                 )}
