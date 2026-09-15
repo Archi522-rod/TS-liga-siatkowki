@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Trophy, CalendarDays, Lock, Plus, Trash2, ShieldCheck, X, Check, KeyRound, Wand2, AlertTriangle, Copy, Printer, ChevronDown, ChevronRight, Megaphone, Pencil } from "lucide-react";
 import { storage, adminAuth } from "./lib/storage";
 
@@ -733,6 +733,20 @@ function generateBrazylijskiMatches(seedTeamIds, size) {
 // oryginalnego grafu SVG, przestylowany na kolory Ligi Siatkówki.
 function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
   const colW = 190, colGap = 55, rowH = 64, rowGap = 24, marginX = 24, marginTop = 34;
+  const containerRef = useRef(null);
+  const [fitToScreen, setFitToScreen] = useState(true);
+  const [containerWidth, setContainerWidth] = useState(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener("resize", update);
+    return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", update); };
+  }, []);
 
   const byId = {};
   matches.forEach((m) => { byId[m.id] = m; });
@@ -757,6 +771,7 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
   if (depths.length === 0) return null;
   const svgWidth = marginX * 2 + depths.length * colW + (depths.length - 1) * colGap;
   const svgHeight = marginTop + maxRows * (rowH + rowGap);
+  const scale = fitToScreen && containerWidth ? Math.min(1, containerWidth / svgWidth) : 1;
 
   const edges = [];
   matches.forEach((m) => {
@@ -769,8 +784,15 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
   });
 
   return (
-    <div style={{ overflowX: "auto", paddingBottom: 12 }}>
-      <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ display: "block", minWidth: svgWidth }}>
+    <div>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--grey)", marginBottom: 8, cursor: "pointer" }}>
+        <input type="checkbox" checked={fitToScreen} onChange={(e) => setFitToScreen(e.target.checked)} />
+        Dopasuj graf do szerokości ekranu
+      </label>
+      <div ref={containerRef} style={{ overflowX: scale < 1 ? "hidden" : "auto", paddingBottom: 12, width: "100%" }}>
+        <div style={{ width: svgWidth * scale, height: svgHeight * scale }}>
+          <svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            style={{ display: "block", transform: `scale(${scale})`, transformOrigin: "top left" }}>
         <defs>
           <marker id="br-graf-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
             <path d="M2 1L8 5L2 9" fill="none" stroke="#B7C3CE" strokeWidth="1.4" />
@@ -844,6 +866,8 @@ function BrazylijskiGraphSVG({ matches, teamName, setsToWin }) {
           );
         })}
       </svg>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1463,7 +1487,7 @@ export default function VolleyballLeagueApp() {
         </div>
       </div>
 
-      <div className="vb-content">
+      <div className="vb-content" style={tab === "tabela" && (isTournament || isBrazylijski) ? { maxWidth: "min(1600px, 97vw)" } : undefined}>
         {storageError && (
           <div style={{ background: "#F6E4DE", color: "var(--rust)", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
             Wystąpił problem z zapisem danych. Spróbuj odświeżyć stronę.
