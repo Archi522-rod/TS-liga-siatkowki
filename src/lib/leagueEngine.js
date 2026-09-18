@@ -298,7 +298,9 @@ export function generateBracketMatches(seedTeamIds) {
       matches.push({
         id, round: stageLabel(r, totalRounds), date: "", time: "", venue: "",
         homeId: null, awayId: null, sets: [],
-        bracket: { roundIndex: r, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null },
+        // noBye: true — pusty slot w tej rundzie oznacza "czekamy na wynik
+        // poprzedniego meczu", a NIE prawdziwy wolny los (te są tylko w 1. rundzie).
+        bracket: { roundIndex: r, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null, noBye: true },
       });
       thisRoundIds.push(id);
       const srcA = matches.find((m) => m.id === prevRoundIds[i * 2]);
@@ -317,7 +319,7 @@ export function generateBracketMatches(seedTeamIds) {
       matches.push({
         id: bronzeId, round: "Mecz o 3. miejsce", date: "", time: "", venue: "",
         homeId: null, awayId: null, sets: [],
-        bracket: { roundIndex: totalRounds - 1, isBronze: true, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null },
+        bracket: { roundIndex: totalRounds - 1, isBronze: true, nextMatchId: null, nextSlot: null, loserNextMatchId: null, loserNextSlot: null, noBye: true },
       });
       const semiA = matches.find((m) => m.id === semiIds[0]);
       const semiB = matches.find((m) => m.id === semiIds[1]);
