@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Trophy, CalendarDays, Lock, Plus, Trash2, ShieldCheck, X, Check, KeyRound, Wand2, AlertTriangle, Copy, Printer, ChevronDown, ChevronRight, Megaphone, Pencil } from "lucide-react";
-import { storage, adminAuth } from "./lib/storage";
+import { storage, adminAuth, analytics } from "./lib/storage";
 import { LOGO_DATA_URI } from "./lib/logo";
 import {
   LEGACY_TEAMS_KEY, LEGACY_MATCHES_KEY, SEASONS_KEY, CURRENT_SEASON_KEY,
@@ -527,6 +527,35 @@ export default function VolleyballLeagueApp() {
   const [genError, setGenError] = useState("");
   const [printMatchId, setPrintMatchId] = useState(null);
   const [posterOpen, setPosterOpen] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [statsError, setStatsError] = useState("");
+  const [statsLoading, setStatsLoading] = useState(false);
+  const lastTrackedTab = useRef(null);
+
+  // Liczymy wejścia kibiców; pomijamy zakładkę Admin i zalogowanych adminów.
+  useEffect(() => {
+    if (loading || unlocked || tab === "admin") return;
+    if (lastTrackedTab.current === tab) return;
+    lastTrackedTab.current = tab;
+    analytics.track(tab);
+  }, [tab, loading, unlocked]);
+
+  async function loadStats() {
+    setStatsLoading(true);
+    setStatsError("");
+    try {
+      setStats(await analytics.getStats(sessionUsername, sessionPassword));
+    } catch (e) {
+      setStatsError("Nie udało się pobrać statystyk. Czy uruchomiłeś supabase-schema-analytics.sql?");
+    } finally {
+      setStatsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (unlocked && tab === "admin" && sessionUsername) loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unlocked, tab, sessionUsername]);
 
   useEffect(() => {
     (async () => {
@@ -2137,6 +2166,90 @@ export default function VolleyballLeagueApp() {
                 </button>
               </div>
               {teams.length < 2 && <div style={{ fontSize: 12, color: "var(--grey)", marginTop: 6 }}>Dodaj co najmniej 2 drużyny, żeby zaplanować mecz.</div>}
+            </Section>
+
+            <Section title="Statystyki odwiedzin" defaultOpen>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: "var(--grey)", flex: 1 }}>
+                  Liczone anonimowo (bez Twoich wejść jako admin). „Unikalni” = różne przeglądarki/urządzenia.
+                </div>
+                <button className="vb-btn" onClick={loadStats} disabled={statsLoading}
+                  style={{ background: "var(--navy)", color: "var(--chalk)", padding: "6px 12px", fontSize: 12 }}>
+                  {statsLoading ? "Ładuję…" : "Odśwież"}
+                </button>
+              </div>
+              {statsError && <div style={{ color: "var(--rust)", fontSize: 13, marginBottom: 8 }}>{statsError}</div>}
+              {stats && (() => {
+                const daily = stats.daily || [];
+                const maxV = Math.max(1, ...daily.map((d) => d.visitors));
+                const tabNames = { tabela: "Tabela", terminarz: "Terminarz", ogloszenia: "Ogłoszenia" };
+                const devNames = { mobile: "Telefon", desktop: "Komputer" };
+                const totalTab = (stats.by_tab || []).reduce((a, t) => a + t.views, 0) || 1;
+                const totalDev = (stats.by_device || []).reduce((a, t) => a + t.visitors, 0) || 1;
+                const retPct = stats.visitors_30 ? Math.round((stats.returning_30 / stats.visitors_30) * 100) : 0;
+                const kpi = [
+                  ["Dziś", stats.today_visitors, `${stats.today_views} wyświetleń`],
+                  ["7 dni", stats.visitors_7, `${stats.views_7} wyświetleń`],
+                  ["30 dni", stats.visitors_30, `${stats.views_30} wyświetleń`],
+                  ["Wracający (30 dni)", `${retPct}%`, `${stats.returning_30} z ${stats.visitors_30} osób`],
+                ];
+                return (
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 16 }}>
+                      {kpi.map(([label, big, small]) => (
+                        <div key={label} style={{ background: "#fff", border: "1px solid #DFD8C8", borderRadius: 8, padding: "10px 12px" }}>
+                          <div style={{ fontSize: 11, color: "var(--grey)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
+                          <div className="vb-display" style={{ fontSize: 30, lineHeight: 1.1 }}>{big}</div>
+                          <div style={{ fontSize: 11, color: "var(--grey)" }}>{small}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Unikalni odwiedzający dziennie (ostatnie 30 dni)</div>
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 90, background: "#fff", border: "1px solid #DFD8C8", borderRadius: 8, padding: "8px 8px 4px" }}>
+                      {daily.map((d) => (
+                        <div key={d.day} title={`${d.day}: ${d.visitors} os., ${d.views} wyśw.`}
+                          style={{ flex: 1, minWidth: 2, height: `${Math.max(2, (d.visitors / maxV) * 100)}%`,
+                            background: d.visitors ? "var(--oak)" : "#E2DBC9", borderRadius: 2 }} />
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--grey)", marginBottom: 16 }}>
+                      <span>{daily[0]?.day}</span><span>{daily[daily.length - 1]?.day}</span>
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Najczęściej oglądane zakładki</div>
+                        {(stats.by_tab || []).length === 0 && <div style={{ fontSize: 12, color: "var(--grey)" }}>Brak danych.</div>}
+                        {(stats.by_tab || []).map((t) => (
+                          <div key={t.tab} style={{ marginBottom: 6 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                              <span>{tabNames[t.tab] || t.tab}</span><span>{t.views} ({Math.round((t.views / totalTab) * 100)}%)</span>
+                            </div>
+                            <div style={{ height: 6, background: "#E2DBC9", borderRadius: 3 }}>
+                              <div style={{ height: 6, width: `${(t.views / totalTab) * 100}%`, background: "var(--navy)", borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Urządzenia (unikalni, 30 dni)</div>
+                        {(stats.by_device || []).length === 0 && <div style={{ fontSize: 12, color: "var(--grey)" }}>Brak danych.</div>}
+                        {(stats.by_device || []).map((t) => (
+                          <div key={t.device} style={{ marginBottom: 6 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                              <span>{devNames[t.device] || t.device}</span><span>{t.visitors} ({Math.round((t.visitors / totalDev) * 100)}%)</span>
+                            </div>
+                            <div style={{ height: 6, background: "#E2DBC9", borderRadius: 3 }}>
+                              <div style={{ height: 6, width: `${(t.visitors / totalDev) * 100}%`, background: "var(--oak)", borderRadius: 3 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </Section>
 
             <Section title="Konta administratorów" defaultOpen>
