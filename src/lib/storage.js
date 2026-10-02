@@ -115,3 +115,41 @@ export const adminAuth = {
     if (error) throw error;
   },
 };
+
+// Statystyki odwiedzin. Zapisywane są wyłącznie: anonimowy losowy ID przeglądarki,
+// nazwa zakładki i typ urządzenia (bez IP, bez danych osobowych).
+// Odczyt możliwy tylko przez funkcję RPC po weryfikacji loginu admina.
+const VISITOR_KEY = "vb_visitor_id";
+
+function getVisitorId() {
+  try {
+    let id = localStorage.getItem(VISITOR_KEY);
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()).replace(/-/g, "");
+      localStorage.setItem(VISITOR_KEY, id);
+    }
+    return id;
+  } catch (e) {
+    return null; // brak localStorage — nie liczymy takiej wizyty
+  }
+}
+
+export const analytics = {
+  // Zapisuje wejście na zakładkę. Błędy są ignorowane — statystyki nie mogą psuć strony.
+  async track(tab) {
+    try {
+      const visitorId = getVisitorId();
+      if (!visitorId) return;
+      const device = window.matchMedia("(max-width: 768px)").matches ? "mobile" : "desktop";
+      await supabase.from("page_views").insert({ visitor_id: visitorId, tab, device });
+    } catch (e) { /* ignoruj */ }
+  },
+  async getStats(actorUsername, actorPassword) {
+    const { data, error } = await supabase.rpc("get_visit_stats", {
+      p_username: actorUsername,
+      p_password: actorPassword,
+    });
+    if (error) throw error;
+    return data;
+  },
+};
