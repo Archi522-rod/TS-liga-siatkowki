@@ -126,15 +126,16 @@ export function computeStandings(teams, matches) {
     home.pts += o.leaguePts.home; away.pts += o.leaguePts.away;
     if (o.winner === "home") { home.w++; away.l++; } else { away.w++; home.l++; }
   }
-  return Object.values(table).sort((a, b) => {
-    if (b.pts !== a.pts) return b.pts - a.pts;
-    const ra = a.setsL === 0 ? a.setsW : a.setsW / a.setsL;
-    const rb = b.setsL === 0 ? b.setsW : b.setsW / b.setsL;
-    if (rb !== ra) return rb - ra;
-    const pa = a.ptsL === 0 ? a.ptsW : a.ptsW / a.ptsL;
-    const pb = b.ptsL === 0 ? b.ptsW : b.ptsW / b.ptsL;
-    return pb - pa;
-  });
+  // Stosunek wygranych do przegranych; brak przegranych = nieskończoność
+  // (3:0 jest lepsze niż 3:1), brak jakiejkolwiek gry = 0.
+  const ratio = (won, lost) => (lost === 0 ? (won === 0 ? 0 : Infinity) : won / lost);
+  // Bezpieczne porównanie (Infinity - Infinity dałoby NaN).
+  const cmp = (x, y) => (x === y ? 0 : x > y ? 1 : -1);
+  return Object.values(table).sort((a, b) =>
+    cmp(b.pts, a.pts) ||
+    cmp(ratio(b.setsW, b.setsL), ratio(a.setsW, a.setsL)) ||
+    cmp(ratio(b.ptsW, b.ptsL), ratio(a.ptsW, a.ptsL))
+  );
 }
 
 // Wykrywa mecze, które kolidują ze sobą: ta sama data + godzina + hala.
