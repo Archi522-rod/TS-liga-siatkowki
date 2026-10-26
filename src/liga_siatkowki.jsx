@@ -111,8 +111,8 @@ const FONT_STYLE = `
 }
 .vb-header-top { display: flex; align-items: center; gap: 12px; margin-bottom: clamp(10px, 3vw, 16px); flex-wrap: wrap; max-width: 920px; margin-left: auto; margin-right: auto; }
 .vb-logo {
-  width: clamp(32px, 8vw, 46px); height: clamp(32px, 8vw, 46px); flex-shrink: 0;
-  border-radius: 50%; box-shadow: 0 0 0 2px rgba(240, 169, 59, 0.35), var(--shadow-sm);
+  width: clamp(46px, 12vw, 64px); height: clamp(46px, 12vw, 64px); flex-shrink: 0;
+  object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
 }
 .vb-title { color: var(--amber); font-size: clamp(22px, 6.5vw, 34px); line-height: 1; }
 .vb-tabs { display: flex; gap: clamp(8px, 2.5vw, 12px); overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 6px 0 16px 0; max-width: 920px; margin-left: auto; margin-right: auto; scrollbar-width: none; -ms-overflow-style: none; }
