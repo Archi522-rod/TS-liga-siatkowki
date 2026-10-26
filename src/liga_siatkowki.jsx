@@ -519,6 +519,8 @@ export default function VolleyballLeagueApp() {
 
   const [newTeamName, setNewTeamName] = useState("");
   const [teamError, setTeamError] = useState("");
+  const [editingTeamId, setEditingTeamId] = useState(null);
+  const [editTeamName, setEditTeamName] = useState("");
   const [newMatch, setNewMatch] = useState({ round: "1", date: "", time: "", venue: "", homeId: "", awayId: "" });
 
   const [dateRows, setDateRows] = useState([{ id: uid(), date: "", slots: [{ id: uid(), time: "", venue: "" }] }]);
@@ -807,6 +809,32 @@ export default function VolleyballLeagueApp() {
     setTeamError("");
     saveTeams([...teams, { id: uid(), name }]);
     setNewTeamName("");
+  }
+
+  function startRenameTeam(t) {
+    setEditingTeamId(t.id);
+    setEditTeamName(t.name);
+    setTeamError("");
+    setConfirmDeleteTeamId(null);
+  }
+
+  function cancelRenameTeam() {
+    setEditingTeamId(null);
+    setEditTeamName("");
+    setTeamError("");
+  }
+
+  // Zmienia WYŁĄCZNIE pole name drużyny. Mecze odwołują się do drużyny przez id
+  // (homeId/awayId), więc wyniki i tabela zostają nietknięte.
+  function renameTeam(id) {
+    const name = editTeamName.trim();
+    if (!name) return;
+    if (teams.some((t) => t.id !== id && t.name.toLowerCase() === name.toLowerCase())) {
+      setTeamError("Drużyna o tej nazwie już jest na liście.");
+      return;
+    }
+    saveTeams(teams.map((t) => (t.id === id ? { ...t, name } : t)));
+    cancelRenameTeam();
   }
 
   function deleteTeam(id) {
@@ -1791,7 +1819,26 @@ export default function VolleyballLeagueApp() {
                         display: "flex", alignItems: "center", gap: 8, background: "#fff",
                         border: "1px solid #DFD8C8", borderRadius: 8, padding: "6px 10px", fontSize: 13,
                       }}>
+                        {editingTeamId === t.id ? (
+                          <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <input className="vb-input" autoFocus value={editTeamName}
+                              onChange={(e) => { setEditTeamName(e.target.value); if (teamError) setTeamError(""); }}
+                              onKeyDown={(e) => { if (e.key === "Enter") renameTeam(t.id); if (e.key === "Escape") cancelRenameTeam(); }}
+                              style={{ padding: "4px 8px", fontSize: 13, width: 170 }} />
+                            <button onClick={() => renameTeam(t.id)} title="Zapisz nazwę" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--oak-dark)", display: "flex" }}>
+                              <Check size={15} />
+                            </button>
+                            <button onClick={cancelRenameTeam} title="Anuluj" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--grey)", display: "flex" }}>
+                              <X size={15} />
+                            </button>
+                          </span>
+                        ) : (<>
                         {t.name}
+                        {confirmDeleteTeamId !== t.id && (
+                          <button onClick={() => startRenameTeam(t)} title="Zmień nazwę drużyny" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--oak-dark)", display: "flex" }}>
+                            <Pencil size={13} />
+                          </button>
+                        )}
                         {confirmDeleteTeamId === t.id ? (
                           <span style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
                             <span style={{ color: "var(--rust)" }}>
@@ -1809,6 +1856,7 @@ export default function VolleyballLeagueApp() {
                             <Trash2 size={13} />
                           </button>
                         )}
+                        </>)}
                       </div>
                     );
                   })}
